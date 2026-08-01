@@ -40,7 +40,9 @@ supabase/.branches/
 supabase/.temp/
 
 # --- Herramientas locales ---
-.claude/settings.local.json
+# Con `/` el patrón queda anclado a la raíz, así que hace falta `**/`
+# para que también aplique a packages/*/.claude/
+**/.claude/settings.local.json
 
 # --- Sistema y editores ---
 .DS_Store
