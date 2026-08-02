@@ -21,7 +21,7 @@
 | 6 — Clasificación | 🔶 | funciona; falta evolución y realtime |
 | 7a — Ampliar librería | ✅ | 66 tests |
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
-| 8 — Administración | ❌ | — |
+| 8 — Administración | 🔶 | panel en producción: roles, cuentas sin confirmar y apertura/cierre excepcional. Falta el disparo manual del sync |
 | 9 — PWA | ✅ | instalada desde el móvil en `motogporra.vercel.app` |
 | 10 — Producción | 🔶 | desplegada en Vercel, SMTP propio, alta y recuperación probadas; faltan backups, monitorización y tests E2E |
 
@@ -61,6 +61,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 10 | **Service worker propio, sin Serwist** | Ver §14. Turbopack se queda; no hay paso de build extra ni dependencias nuevas. A cambio, las estrategias de caché se escriben a mano en `public/sw.js` |
 | 11 | **No se cachea nada autenticado** | Toda la app pasa por `requireUser()`, así que su HTML y sus cargas RSC son distintas por usuario. El worker solo guarda `/_next/static/*` e `/icons/*`. Sin conexión no hay app: hay una página de aviso |
 | 12 | **El registro sí revela si un email ya está dado de alta** | Excepción consciente a la regla de no distinguir (§10.3). Ver abajo |
+| 13 | **El panel no borra usuarios** | Se hace desde Supabase. Borrar una cuenta arrastra por cascada sus apuestas y puntuaciones, así que **cambia la clasificación de carreras ya disputadas** — justo lo que §10.3 evita al no dar `DELETE` sobre `bets`. Que cueste un poco más es la protección, no un descuido |
 
 #### Sobre la decisión 12: por qué el registro es la excepción
 
