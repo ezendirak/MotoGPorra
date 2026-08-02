@@ -1,5 +1,7 @@
-import { logout } from '@/lib/auth/actions'
+import Link from 'next/link'
+
 import { getProfile } from '@/lib/auth/session'
+import { getMyBet } from '@/services/bets.service'
 import { getNextRace, getOpenRaces, getSeasonProgress } from '@/services/races.service'
 import { countryFlag, formatRaceDate, formatShortDate, timeUntil } from '@/utils/date'
 
@@ -18,6 +20,8 @@ export default async function HomePage() {
     getSeasonProgress(),
   ])
 
+  // Depende de `next`, así que no puede ir en el Promise.all de arriba.
+  const miApuesta = next ? await getMyBet(next.id!) : null
   const restante = timeUntil(next?.closes_at ?? null)
 
   return (
@@ -62,6 +66,24 @@ export default async function HomePage() {
               </dd>
             </div>
           </dl>
+
+          <Link
+            href={`/races/${next.id}/bet`}
+            className="mt-5 flex h-12 items-center justify-center rounded-xl bg-red-600 font-semibold text-white transition-colors hover:bg-red-500"
+          >
+            {miApuesta ? 'Cambiar tu apuesta' : 'Apostar'}
+          </Link>
+
+          {miApuesta && (
+            <ul className="mt-3 flex justify-center gap-4 text-xs text-zinc-400">
+              {miApuesta.picks.map((pick, i) => (
+                <li key={pick.position}>
+                  <span aria-hidden="true">{['🥇', '🥈', '🥉'][i]}</span>{' '}
+                  {pick.riderName.split(' ').at(-1)}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       ) : (
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
@@ -98,18 +120,9 @@ export default async function HomePage() {
         </section>
       )}
 
-      <p className="text-center text-xs text-zinc-600">
+      <p className="pb-4 text-center text-xs text-zinc-600">
         Temporada 2026 · {progress.done} de {progress.total} sesiones disputadas
       </p>
-
-      <form action={logout} className="mt-auto pt-4">
-        <button
-          type="submit"
-          className="h-12 w-full rounded-xl border border-zinc-800 text-sm font-medium text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-        >
-          Cerrar sesión
-        </button>
-      </form>
     </main>
   )
 }
