@@ -1,0 +1,11 @@
+-- =========================================================================
+-- Datos de prueba para desarrollo LOCAL (`supabase db reset`).
+--
+-- Los datos de referencia imprescindibles (categorías, temporada activa,
+-- reglas de puntuación) NO están aquí: viven en la migración
+-- 20260802001200_reference_data.sql, porque también hacen falta en producción.
+--
+-- Este fichero queda a propósito vacío de momento: los datos deportivos
+-- reales llegan del sincronizador (fase 7), y hasta entonces conviene
+-- trabajar con datos importados de verdad antes que con inventados.
+-- =========================================================================
