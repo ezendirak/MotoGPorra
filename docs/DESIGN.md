@@ -22,23 +22,23 @@
 | 7a — Ampliar librería | ✅ | 66 tests |
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
 | 8 — Administración | ❌ | — |
-| 9 — PWA | ❌ | — |
+| 9 — PWA | 🔶 | manifest, iconos y service worker verificados con `next start`; falta instalarla en un móvil real |
 | 10 — Producción | ❌ | — |
 
 Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pilotos (22 activos), 22 resultados oficiales y 476 líneas de clasificación.
 
 ### Lo siguiente, por orden de valor
 
-1. **PWA (fase 9).** Es lo que convierte esto en una app instalable, que era el objetivo. Serwist, `manifest.ts`, iconos 192/512 + maskable + `apple-touch-icon`, y prompt propio para iOS (Safari no expone `beforeinstallprompt`).
-2. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Añadir variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost`.
-3. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
-4. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
+1. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Añadir variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost` — y una PWA **no se puede instalar sin HTTPS**, así que la fase 9 no se cierra del todo hasta que esto esté hecho.
+2. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
+3. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
 
 ### Deuda y cosas a vigilar
 
 - **SMTP.** El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.
 - **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión que las resuelva hoy; `npm audit fix --force` degradaría el framework.
 - **El cron automático nunca se ha disparado solo.** La ejecución manual del 02/08 funcionó; el primer `schedule` es el lunes 04:00 UTC.
+- **La PWA no se ha instalado nunca en un móvil de verdad.** El manifest, los iconos y el service worker están verificados sirviendo desde `next start`, pero el navegador exige HTTPS para instalar: hasta que no haya despliegue no se sabe si el icono se ve bien en una pantalla de inicio ni si el prompt de iOS sale donde debe.
 
 ---
 
@@ -55,6 +55,8 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 7 | **Monorepo** con `motogp_client` dentro | Un solo repo → `workflow_dispatch` basta para el sync manual, sin `repository_dispatch` entre repos |
 | 8 | **El sprint puntúa igual que la carrera**: 1 punto por acierto | `scoring_rules` sin multiplicador por `kind`. Máximo 6 puntos por GP |
 | 9 | **Se amplía `motogp-client`** (§13) como fase 7a | El sincronizador no accederá nunca a atributos privados de la librería |
+| 10 | **Service worker propio, sin Serwist** | Ver §14. Turbopack se queda; no hay paso de build extra ni dependencias nuevas. A cambio, las estrategias de caché se escriben a mano en `public/sw.js` |
+| 11 | **No se cachea nada autenticado** | Toda la app pasa por `requireUser()`, así que su HTML y sus cargas RSC son distintas por usuario. El worker solo guarda `/_next/static/*` e `/icons/*`. Sin conexión no hay app: hay una página de aviso |
 
 ### Verificación contra la API real
 
@@ -1275,7 +1277,17 @@ apps/sync/
 
 - **Mobile First real:** navegación inferior con 4–5 destinos, todos los objetivos táctiles ≥44 px, acciones primarias en el tercio inferior (alcance del pulgar), bottom sheets en lugar de modales centrados, `safe-area-inset` respetada.
 - **Estética MotoGP:** fondo oscuro grafito, rojo MotoGP como acento único, tipografía condensada para dorsales y cronos, tarjetas con banderas de país, medallas 🥇🥈🥉 como anclas visuales. Minimalismo: una acción primaria por pantalla.
-- **PWA con Serwist** (sucesor mantenido de `next-pwa`, compatible con App Router): `manifest.ts` tipado, iconos 192/512 + maskable + `apple-touch-icon`, `display: standalone`, precache del shell, `NetworkFirst` para datos y `CacheFirst` para estáticos. En iOS, prompt propio con instrucciones "Compartir → Añadir a pantalla de inicio", ya que Safari no expone `beforeinstallprompt`.
+- **PWA sin librería** (decisión 10): `manifest.ts` tipado, iconos 192/512 + maskable + `apple-touch-icon` generados por `npm run icons`, `display: standalone`, y un `public/sw.js` escrito a mano. En iOS, prompt propio con instrucciones "Compartir → Añadir a pantalla de inicio", ya que Safari no expone `beforeinstallprompt`.
+- **Qué cachea el worker y qué no** (decisión 11):
+
+  | Petición | Estrategia | Por qué |
+  |---|---|---|
+  | `/_next/static/*`, `/icons/*` | `CacheFirst` | Llevan hash en el nombre o son públicos: no pueden quedar obsoletos |
+  | Navegaciones | Red, **sin guardar**; si falla, `/offline` | El HTML lo produce un RSC tras `requireUser()`: es distinto para cada usuario |
+  | Cargas RSC, rutas de API, Server Actions | Sin interceptar | Mismo motivo, y además hay `POST` de por medio |
+  | Supabase y cualquier otro origen | Sin interceptar | La sesión y la RLS son cosa del servidor, no del caché |
+
+  El diseño original decía "precache del shell". No se puede: al construir, **todas** las rutas de la app salen `ƒ` (dinámicas) porque el layout de `(app)` llama a `requireUser()`. Lo único estático que hay es `/offline`, y es exactamente lo que se precarga.
 
 ---
 
@@ -1368,6 +1380,24 @@ Lo que se descubrió construyendo, y que no estaba en el diseño sobre el papel.
 El diseño preveía `psycopg` contra el pooler de Supabase, por la atomicidad. Al implementarlo resultó inviable: el host directo solo publica registro **AAAA** y la red de desarrollo no tiene ruta IPv6 (Node ni siquiera resuelve el nombre), y los poolers de `eu-central-1` responden `tenant/user not found`.
 
 Se cambió a PostgREST sobre HTTPS, asumiendo la pérdida de atomicidad por job y compensándola con idempotencia. Migrar de vuelta, si algún día se ejecuta desde un entorno con IPv6, es cambiar únicamente `apps/sync/db.py`.
+
+### Hallazgo de la Fase 9: Serwist no se lleva con Turbopack, y aquí no hacía falta
+
+El diseño (§11.5) daba por hecho Serwist. Al ir a instalarlo, dos problemas.
+
+**El técnico.** `@serwist/next@9.5.12` en modo plugin se engancha mediante `config.webpack()`, y Turbopack no llama a ese hook jamás: el worker sencillamente no se generaría. La propia guía de Next lo avisa de pasada («this plugin currently requires webpack configuration») y el paquete lo dice por consola. Las salidas eran `next build --webpack` —renunciar a Turbopack—, `@serwist/turbopack` —experimental— o el *configurator mode*, que sí funciona pero añade cinco dependencias y un `serwist build` posterior que rastrea el interior de `.next/`.
+
+**El de fondo, que es el que decidió.** La estrategia escrita era "precache del shell", y aquí no hay shell que precachear: `(app)/layout.tsx` llama a `requireUser()`, así que el build marca `ƒ` todas las rutas de la app. Serwist habría buscado HTML prerenderizado en `.next/server/app/**` sin encontrar nada útil — y de haberlo encontrado, guardar el HTML de una página autenticada es arriesgarse a servirle a un usuario la pantalla ya renderizada de otro.
+
+Lo que de verdad hacía instalable la app era el manifest y los iconos, no el caché. Así que el worker se escribió a mano en 100 líneas: `CacheFirst` solo sobre lo público e inmutable, navegación siempre contra la red con `/offline` de red de seguridad, y todo lo demás sin interceptar. Cero dependencias, cero pasos de build, Turbopack intacto.
+
+> Lección general: **antes de adoptar una librería de build, comprobar contra qué bundler engancha.** El ecosistema de Next todavía asume webpack en muchos sitios, y este proyecto ya no lo usa.
+
+### Hallazgo de la Fase 9: `setState` dentro de un `useEffect` ahora es error de lint
+
+El hook de instalación detectaba iOS en un `useEffect` y llamaba a `setEstado`. ESLint lo rechazó con `react-hooks/set-state-in-effect` — la misma regla que CLAUDE.md ya enunciaba a mano ("no resetear estado desde un `useEffect`"), pero ahora verificada por el linter.
+
+La salida no es un `useState` con valor inicial calculado, porque leer `window` durante el render rompe la hidratación. Es **`useSyncExternalStore`**, que existe justo para esto: da un valor en servidor (`'oculto'`, sin invitación) y otro en cliente, sin render en cascada. Merece recordarse para cualquier otro dato que solo exista en el navegador — `matchMedia`, `localStorage`, `navigator`.
 
 ### Hallazgo de la Fase 7b: 4 peticiones donde bastaba 1
 

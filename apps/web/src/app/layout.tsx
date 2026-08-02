@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 
+import { ServiceWorker } from '@/components/layout/service-worker'
+
 import './globals.css'
 
 const geistSans = Geist({
@@ -20,6 +22,19 @@ export const metadata: Metadata = {
   },
   description: 'La porra del Mundial de MotoGP: predice el podio de cada carrera.',
   applicationName: 'MotoGPorra',
+  // iOS no lee el manifest para el icono de la pantalla de inicio: si no hay
+  // `apple-touch-icon`, Safari hace una captura de la página y la usa de icono.
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'MotoGPorra',
+    // `black-translucent` extiende el fondo bajo la barra de estado, que es lo
+    // que hace que la app instalada no parezca una web con un marco encima.
+    // Funciona porque el layout ya respeta `safe-area-inset`.
+    statusBarStyle: 'black-translucent',
+  },
 }
 
 export const viewport: Viewport = {
@@ -41,6 +56,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-zinc-950 text-zinc-100">
         {children}
+        <ServiceWorker />
       </body>
     </html>
   )

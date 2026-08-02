@@ -4,13 +4,21 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { env } from '@/lib/config/env'
 import type { Database } from '@/types/database.types'
 
-/** Rutas accesibles sin sesión. */
+/**
+ * Rutas accesibles sin sesión.
+ *
+ * `/offline` está aquí porque el service worker la precarga en su `install`,
+ * que ocurre en la primera visita y puede no haber usuario todavía. Si el proxy
+ * la redirigiese a `/login`, lo que quedaría cacheado como página de "sin
+ * conexión" sería el formulario de acceso.
+ */
 const PUBLIC_ROUTES = [
   '/login',
   '/register',
   '/forgot-password',
   '/reset-password',
   '/auth',
+  '/offline',
 ]
 
 const isPublicRoute = (pathname: string) =>

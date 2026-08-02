@@ -53,6 +53,8 @@ npm run db:push      # aplicar migraciones nuevas al proyecto enlazado
 npm run db:verify    # 25 pruebas de esquema y RLS contra la base real
 npx supabase gen types typescript --linked > apps/web/src/types/database.types.ts
 
+npm run icons --workspace=web   # regenera los PNG de la PWA desde el SVG del script
+
 .venv/Scripts/python -m motogporra_sync <riders|calendar|results|backfill|all>
 cd packages/motogp_client && ../../.venv/Scripts/python -m pytest -q
 ```
@@ -92,6 +94,7 @@ Además:
 - `redirectTo` y `next` solo aceptan rutas internas (`/…`, nunca `//`).
 - Login y recuperación **no distinguen** email inexistente de contraseña incorrecta.
 - `service_role` bypasa RLS: solo en `apps/sync` y en `lib/supabase/admin.ts`.
+- **El service worker no cachea nada autenticado.** Todas las rutas de `(app)` pasan por `requireUser()`: su HTML y sus cargas RSC son distintas por usuario, y guardarlos permitiría servirle a alguien la pantalla de otro. `public/sw.js` solo guarda `/_next/static/*` e `/icons/*`; la navegación va siempre a la red y cae en `/offline` si falla.
 
 ---
 
@@ -128,7 +131,8 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 - **Las vistas sin `security_invoker`** se ejecutan con permisos del propietario y bypasan la RLS.
 - **Los triggers corren con los permisos de quien hace la operación**: hace falta `GRANT EXECUTE` sobre la función del trigger.
 - **`bets` no tiene clave foránea a `profiles`** (`user_id` apunta a `auth.users`), así que PostgREST no puede incrustar el perfil: se cruza en JS.
-- **No resetear estado desde un `useEffect`**: remontar con `key` consigue lo mismo sin renders en cascada.
+- **No resetear estado desde un `useEffect`**: la regla `react-hooks/set-state-in-effect` lo rechaza. Para estado derivado, remontar con `key`; para datos que solo existen en el navegador (`matchMedia`, `localStorage`, `navigator`), **`useSyncExternalStore`** — un `useState` con valor inicial calculado rompería la hidratación.
+- **Nada de librerías de build que enganchen por webpack**: aquí manda Turbopack, en `dev` y en `build`. Es lo que descartó Serwist (`@serwist/next` se engancha en `config.webpack()`, que Turbopack no llama nunca). Comprobar el bundler **antes** de adoptar el paquete.
 - **No usar `Set-Content` de PowerShell** sobre ficheros con acentos: destroza la codificación. Usar las herramientas de edición.
 
 ## Entorno local
