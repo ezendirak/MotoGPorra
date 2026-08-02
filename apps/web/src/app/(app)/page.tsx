@@ -3,7 +3,13 @@ import Link from 'next/link'
 import { getProfile } from '@/lib/auth/session'
 import { getMyBet } from '@/services/bets.service'
 import { getNextRace, getOpenRaces, getSeasonProgress } from '@/services/races.service'
-import { countryFlag, formatRaceDate, formatShortDate, timeUntil } from '@/utils/date'
+import { RaceCountdown } from '@/components/races/race-countdown'
+import {
+  countryFlag,
+  formatRaceDate,
+  formatShortDate,
+  timeUntilPrecise,
+} from '@/utils/date'
 
 /**
  * Home.
@@ -22,7 +28,7 @@ export default async function HomePage() {
 
   // Depende de `next`, así que no puede ir en el Promise.all de arriba.
   const miApuesta = next ? await getMyBet(next.id!) : null
-  const restante = timeUntil(next?.closes_at ?? null)
+  const restante = timeUntilPrecise(next?.closes_at ?? null)
 
   return (
     <main className="flex flex-1 flex-col gap-6 px-5 pt-10">
@@ -61,8 +67,8 @@ export default async function HomePage() {
             </div>
             <div>
               <dt className="text-xs text-zinc-500">Cierre de apuestas</dt>
-              <dd className="mt-0.5 font-medium text-zinc-200">
-                {restante ? `en ${restante}` : 'cerrado'}
+              <dd className="mt-0.5 font-medium text-zinc-200 tabular-nums">
+                <RaceCountdown closesAt={next.closes_at} inicial={restante} />
               </dd>
             </div>
           </dl>

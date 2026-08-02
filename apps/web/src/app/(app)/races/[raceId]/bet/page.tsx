@@ -6,7 +6,8 @@ import { BetForm } from '@/components/bets/bet-form'
 import { getMyBet } from '@/services/bets.service'
 import { getRaceById } from '@/services/races.service'
 import { getSeasonRiders } from '@/services/riders.service'
-import { countryFlag, formatRaceDate, timeUntil } from '@/utils/date'
+import { RaceCountdown } from '@/components/races/race-countdown'
+import { countryFlag, formatRaceDate, timeUntilPrecise } from '@/utils/date'
 
 export const metadata: Metadata = { title: 'Tu apuesta' }
 
@@ -42,7 +43,7 @@ export default async function BetPage({
     getMyBet(raceId),
   ])
 
-  const restante = timeUntil(race.closes_at)
+  const restante = timeUntilPrecise(race.closes_at)
 
   return (
     <main className="flex flex-col gap-6 px-5 pt-8">
@@ -73,13 +74,13 @@ export default async function BetPage({
 
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
         <p className="text-sm text-amber-300">
-          {restante ? (
-            <>
-              Cierra en <strong className="font-semibold">{restante}</strong>
-            </>
-          ) : (
-            'El plazo está a punto de cerrarse'
-          )}
+          <RaceCountdown
+            closesAt={race.closes_at}
+            inicial={restante}
+            prefijo="Cierra "
+            textoCerrado="El plazo está a punto de cerrarse"
+            className="font-semibold tabular-nums"
+          />
         </p>
       </div>
 

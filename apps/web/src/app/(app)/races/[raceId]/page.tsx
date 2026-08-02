@@ -5,7 +5,8 @@ import type { Metadata } from 'next'
 import { RaceStatusBadge } from '@/components/races/race-status-badge'
 import { getMyBet, getRaceBets } from '@/services/bets.service'
 import { getRaceById, getRaceResult } from '@/services/races.service'
-import { countryFlag, formatRaceDate, timeUntil } from '@/utils/date'
+import { RaceCountdown } from '@/components/races/race-countdown'
+import { countryFlag, formatRaceDate, timeUntilPrecise } from '@/utils/date'
 
 export const metadata: Metadata = { title: 'Carrera' }
 
@@ -29,7 +30,7 @@ export default async function RaceDetailPage({
   const podio = resultado.filter((e) => e.position !== null && e.position <= 3)
   const podioIds = podio.map((e) => e.riders?.id)
   const abierta = race.status === 'open'
-  const restante = timeUntil(race.closes_at)
+  const restante = timeUntilPrecise(race.closes_at)
 
   return (
     <main className="flex flex-col gap-6 px-5 pt-8">
@@ -79,7 +80,13 @@ export default async function RaceDetailPage({
           )}
 
           <p className="mt-3 text-xs text-zinc-500">
-            {restante ? `Cierra en ${restante}` : 'A punto de cerrarse'}
+            <RaceCountdown
+              closesAt={race.closes_at}
+              inicial={restante}
+              prefijo="Cierra "
+              textoCerrado="A punto de cerrarse"
+              className="tabular-nums"
+            />
           </p>
 
           <Link

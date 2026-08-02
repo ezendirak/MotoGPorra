@@ -36,24 +36,39 @@ export function formatTime(iso: string | null): string {
 }
 
 /**
- * Tiempo restante en formato compacto: "3 d 5 h", "5 h 12 min", "8 min".
+ * Tiempo restante: "3 d 5 h", "5 h 12 min", "12 min 34 s".
  *
- * Devuelve null si ya pasó, para que quien lo use decida qué mostrar en vez
+ * Devuelve `null` si ya pasó, para que quien lo use decida qué mostrar en vez
  * de recibir un "hace 2 días" que aquí no significa nada.
+ *
+ * La granularidad cambia con lo que queda porque cambia lo que le importa al
+ * usuario: a tres días vista da igual el minuto exacto, y a doce minutos del
+ * cierre lo único que quiere saber es si le da tiempo a apostar.
+ *
+ * Que por encima de la hora solo cambie cada minuto tiene además una ventaja
+ * práctica: la cuenta atrás en vivo guarda el texto ya formateado, así que
+ * mientras el texto no cambie React no vuelve a renderizar aunque el reloj siga
+ * corriendo.
  */
-export function timeUntil(iso: string | null, from: Date = new Date()): string | null {
+export function timeUntilPrecise(
+  iso: string | null,
+  from: Date = new Date(),
+): string | null {
   if (!iso) return null
 
   const ms = new Date(iso).getTime() - from.getTime()
   if (ms <= 0) return null
 
-  const minutos = Math.floor(ms / 60_000)
+  const segundos = Math.floor(ms / 1000)
+  const minutos = Math.floor(segundos / 60)
   const horas = Math.floor(minutos / 60)
   const dias = Math.floor(horas / 24)
 
   if (dias > 0) return `${dias} d ${horas % 24} h`
   if (horas > 0) return `${horas} h ${minutos % 60} min`
-  return `${minutos} min`
+  // En el último minuto sobra el "0 min": lo que queda son segundos y ya está.
+  if (minutos > 0) return `${minutos} min ${segundos % 60} s`
+  return `${segundos} s`
 }
 
 /** Emoji de bandera a partir del código ISO de dos letras. */
