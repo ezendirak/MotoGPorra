@@ -1,16 +1,20 @@
 import type { Metadata } from 'next'
 
-import { getStandings } from '@/services/standings.service'
+import { PositionDelta } from '@/components/standings/position-delta'
+import { StandingsRealtime } from '@/components/standings/standings-realtime'
+import { getStandingsWithTrend } from '@/services/standings.service'
 
 export const metadata: Metadata = { title: 'Clasificación' }
 
 const MEDALLAS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
 export default async function StandingsPage() {
-  const clasificacion = await getStandings()
+  const clasificacion = await getStandingsWithTrend()
 
   return (
     <main className="flex flex-col gap-6 px-5 pt-10">
+      <StandingsRealtime />
+
       <header>
         <h1 className="text-2xl font-bold text-white">Clasificación</h1>
         <p className="mt-1 text-sm text-zinc-400">Temporada 2026</p>
@@ -38,7 +42,9 @@ export default async function StandingsPage() {
                 </p>
               </div>
 
-              <span className="shrink-0 text-lg font-bold text-white tabular-nums">
+              <PositionDelta delta={fila.delta} />
+
+              <span className="w-8 shrink-0 text-right text-lg font-bold text-white tabular-nums">
                 {fila.total_points}
               </span>
             </li>

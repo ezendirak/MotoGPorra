@@ -32,6 +32,89 @@ export async function getStandings(): Promise<Standing[]> {
   return data ?? []
 }
 
+export interface StandingWithTrend extends Standing {
+  /**
+   * Puestos ganados desde la carrera anterior. Positivo = ha subido.
+   * `null` cuando no había clasificación previa con la que comparar: primera
+   * carrera de la temporada, o alguien que acaba de puntuar por primera vez.
+   */
+  delta: number | null
+}
+
+/**
+ * Replica el `rank()` de `season_standings`: los empates comparten posición y
+ * la siguiente salta (1, 2, 2, 4).
+ *
+ * Se calcula aquí y no en SQL porque la posición *anterior* exige recalcular la
+ * clasificación excluyendo la última carrera, y expresar eso como vista obliga
+ * a una función con ventana sobre un agregado condicional. Con ~20 usuarios y
+ * ~44 carreras son 880 filas: en JS es inmediato y se lee.
+ */
+function posicionar(puntosPorUsuario: Map<string, number>): Map<string, number> {
+  const puntos = [...puntosPorUsuario.values()]
+
+  return new Map(
+    [...puntosPorUsuario].map(([userId, propios]) => [
+      userId,
+      1 + puntos.filter((p) => p > propios).length,
+    ]),
+  )
+}
+
+/**
+ * Clasificación con la variación de puesto respecto a la carrera anterior.
+ *
+ * "Anterior" es la última carrera con resultado, no la última del calendario:
+ * comparar contra un Gran Premio que aún no se ha corrido daría cero siempre.
+ */
+export async function getStandingsWithTrend(): Promise<StandingWithTrend[]> {
+  const supabase = await createClient()
+  const actual = await getStandings()
+
+  if (actual.length === 0) return []
+
+  const { data: puntuaciones } = await supabase
+    .from('race_scores')
+    .select('race_id, user_id, points')
+
+  if (!puntuaciones?.length) return actual.map((fila) => ({ ...fila, delta: null }))
+
+  // Cuál fue la última carrera puntuada, por horario y no por ronda: el sprint
+  // y la carrera de un mismo GP comparten ronda.
+  const { data: carreras } = await supabase
+    .from('races_view')
+    .select('id, scheduled_at')
+    .in('id', [...new Set(puntuaciones.map((p) => p.race_id))])
+
+  const ordenadas = (carreras ?? [])
+    .filter((c) => c.scheduled_at !== null)
+    .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+
+  const ultima = ordenadas.at(-1)
+  // Con una sola carrera puntuada no hay nada anterior contra lo que comparar.
+  if (!ultima || ordenadas.length < 2) {
+    return actual.map((fila) => ({ ...fila, delta: null }))
+  }
+
+  const previos = new Map<string, number>()
+  for (const p of puntuaciones) {
+    if (p.race_id === ultima.id || !p.user_id) continue
+    previos.set(p.user_id, (previos.get(p.user_id) ?? 0) + p.points)
+  }
+
+  const posicionesPrevias = posicionar(previos)
+
+  return actual.map((fila) => {
+    const antes = fila.user_id ? posicionesPrevias.get(fila.user_id) : undefined
+
+    return {
+      ...fila,
+      // Restar al revés: subir del 5º al 3º son +2 puestos ganados.
+      delta: antes === undefined || fila.position === null ? null : antes - fila.position,
+    }
+  })
+}
+
 export type HistoryRow = {
   raceId: string
   points: number

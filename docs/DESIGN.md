@@ -18,7 +18,7 @@
 | 3 — Shell y calendario | ✅ | build + rutas protegidas |
 | 4 — Apuestas | ✅ | apuesta real creada y puntuada |
 | 5 — Resultados y puntuación | ✅ | prueba en Mugello: podio real, `breakdown` correcto |
-| 6 — Clasificación | 🔶 | funciona; falta evolución y realtime |
+| 6 — Clasificación | ✅ | evolución por flechas y realtime sobre `race_scores`; `db:verify` sigue en 25/25 |
 | 7a — Ampliar librería | ✅ | 66 tests |
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
 | 8 — Administración | 🔶 | panel en producción: roles, cuentas sin confirmar y apertura/cierre excepcional. Falta el disparo manual del sync |
@@ -32,8 +32,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 1. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
 
    Al listar usuarios hay que **distinguir las cuentas sin confirmar**. `signUp` inserta en `auth.users` antes de la confirmación y el trigger salta ahí mismo, así que una cuenta sin confirmar ya tiene perfil, rol e inscripción en la temporada — y **ya reserva su nombre visible** por el índice único. Hoy no se nota (nadie lee `season_participants`, y la clasificación deriva de `race_scores`, así que quien no ha apostado no aparece), pero en el panel saldrán mezcladas con las buenas. Filtrar por `email_confirmed_at`, o purgar las que lleven días sin confirmar.
-2. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
-3. **Cerrar la fase 6.** La clasificación funciona; faltan la evolución por jornadas y el realtime.
+2. **Backups, monitorización y tests E2E**, que es lo que queda de la fase 10.
 
 ### Deuda y cosas a vigilar
 
@@ -62,6 +61,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 11 | **No se cachea nada autenticado** | Toda la app pasa por `requireUser()`, así que su HTML y sus cargas RSC son distintas por usuario. El worker solo guarda `/_next/static/*` e `/icons/*`. Sin conexión no hay app: hay una página de aviso |
 | 12 | **El registro sí revela si un email ya está dado de alta** | Excepción consciente a la regla de no distinguir (§10.3). Ver abajo |
 | 13 | **El panel no borra usuarios** | Se hace desde Supabase. Borrar una cuenta arrastra por cascada sus apuestas y puntuaciones, así que **cambia la clasificación de carreras ya disputadas** — justo lo que §10.3 evita al no dar `DELETE` sobre `bets`. Que cueste un poco más es la protección, no un descuido |
+| 14 | **Realtime solo publica `race_scores`** | Es la única tabla que cambia sin que el usuario haga nada. `bets` no se publica aunque la RLS proteja su contenido: el evento en sí ya delata que alguien acaba de apostar. `races` tampoco, porque su estado se deriva y no genera `UPDATE` |
 
 #### Sobre la decisión 12: por qué el registro es la excepción
 
