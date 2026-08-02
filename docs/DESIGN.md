@@ -29,11 +29,11 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 
 ### Lo siguiente, por orden de valor
 
-1. **Desplegar en Vercel.** Es lo único que queda de la fase 10 y **son pasos manuales**: están escritos uno a uno en [DESPLIEGUE.md](DESPLIEGUE.md). Sin esto la porra solo existe en `localhost` — y una PWA **no se puede instalar sin HTTPS**, así que la fase 9 tampoco se cierra hasta entonces.
-2. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
+1. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
 
    Al listar usuarios hay que **distinguir las cuentas sin confirmar**. `signUp` inserta en `auth.users` antes de la confirmación y el trigger salta ahí mismo, así que una cuenta sin confirmar ya tiene perfil, rol e inscripción en la temporada — y **ya reserva su nombre visible** por el índice único. Hoy no se nota (nadie lee `season_participants`, y la clasificación deriva de `race_scores`, así que quien no ha apostado no aparece), pero en el panel saldrán mezcladas con las buenas. Filtrar por `email_confirmed_at`, o purgar las que lleven días sin confirmar.
-3. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
+2. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
+3. **Cerrar la fase 6.** La clasificación funciona; faltan la evolución por jornadas y el realtime.
 
 ### Deuda y cosas a vigilar
 
@@ -41,7 +41,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 - **Límite de 30 correos/hora**, el que Supabase pone por defecto tras activar SMTP propio. Ajustable en *Authentication → Rate Limits*. Con ~20 participantes solo aprieta si todos se dan de alta la misma tarde.
 - **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión que las resuelva hoy; `npm audit fix --force` degradaría el framework.
 - **El cron automático nunca se ha disparado solo.** La ejecución manual del 02/08 funcionó; el primer `schedule` es el lunes 04:00 UTC.
-- **La PWA no se ha instalado nunca en un móvil de verdad.** El manifest, los iconos y el service worker están verificados sirviendo desde `next start`, pero el navegador exige HTTPS para instalar: hasta que no haya despliegue no se sabe si el icono se ve bien en una pantalla de inicio ni si el prompt de iOS sale donde debe.
+- **No hay monitorización.** El único rastro de un fallo en producción es el `digest` que enseña `error.tsx` y los logs de Vercel: sirve para depurar a petición, no para enterarse de que algo se ha roto.
 
 ---
 
@@ -60,6 +60,15 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 9 | **Se amplía `motogp-client`** (§13) como fase 7a | El sincronizador no accederá nunca a atributos privados de la librería |
 | 10 | **Service worker propio, sin Serwist** | Ver §14. Turbopack se queda; no hay paso de build extra ni dependencias nuevas. A cambio, las estrategias de caché se escriben a mano en `public/sw.js` |
 | 11 | **No se cachea nada autenticado** | Toda la app pasa por `requireUser()`, así que su HTML y sus cargas RSC son distintas por usuario. El worker solo guarda `/_next/static/*` e `/icons/*`. Sin conexión no hay app: hay una página de aviso |
+| 12 | **El registro sí revela si un email ya está dado de alta** | Excepción consciente a la regla de no distinguir (§10.3). Ver abajo |
+
+#### Sobre la decisión 12: por qué el registro es la excepción
+
+El login responde *«Email o contraseña incorrectos»* exista la cuenta o no, y la recuperación responde *«Si existe una cuenta…»* pase lo que pase. Las dos evitan que el formulario sirva para averiguar quién juega. El registro, en cambio, responde *«Ya existe una cuenta con ese email»* ([`actions.ts:38`](../apps/web/src/lib/auth/actions.ts#L38)), y eso **sí** es un oráculo: cualquiera, sin cuenta, puede ir probando direcciones en `/register` y descubrir quién participa.
+
+**Se acepta a propósito.** La alternativa —responder «te hemos enviado un correo» aunque la cuenta ya exista— deja al usuario legítimo esperando indefinidamente un email que no va a llegar, sin que nada le diga lo único útil: que ya tiene cuenta y lo que toca es entrar. El coste del ataque, aquí, es enterarse de si un conocido juega a una porra entre amigos: algo que se averigua preguntándole. No hay dinero ni datos personales detrás.
+
+**Cuándo revisarlo:** si la porra dejara de ser un grupo cerrado que ya se conoce, o si el registro pasara a ser por invitación. Entonces el equilibrio cambia y el mensaje debería igualarse a los otros dos.
 
 ### Verificación contra la API real
 
