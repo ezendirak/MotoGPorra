@@ -51,4 +51,6 @@ El [documento de diseño](docs/DESIGN.md) cubre el modelo de dominio, el esquema
 
 ## Estado
 
-Fase 0 (fundación) completada. Siguiente: Fase 1 — base de datos.
+Funciona de extremo a extremo en local: registro, apuestas, sincronización desde MotoGP y cálculo automático de puntuaciones. La temporada 2026 está importada (22 GP, 44 carreras apostables, 22 resultados oficiales).
+
+Pendiente: PWA, despliegue en Vercel y panel de administración. Ver [estado detallado](docs/DESIGN.md#15-estado-actual-y-cómo-continuar).

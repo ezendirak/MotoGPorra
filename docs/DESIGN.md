@@ -1298,6 +1298,53 @@ Que `apps/sync` lea directamente de `.raw` y de los endpoints privados. Funciona
 
 ---
 
+## 15. Estado actual y cómo continuar
+
+**Última actualización: 02/08/2026.**
+
+### Qué funciona hoy
+
+| Fase | Estado | Comprobado con |
+|---|---|---|
+| 0 — Fundación | ✅ | CI en verde |
+| 1 — Base de datos | ✅ | `npm run db:verify` → 25/25 |
+| 2 — Autenticación | ✅ | registro y login reales |
+| 3 — Shell y calendario | ✅ | build + rutas protegidas |
+| 4 — Apuestas | ✅ | apuesta real creada y puntuada |
+| 5 — Resultados y puntuación | ✅ | prueba en Mugello: podio real, 0 puntos, `breakdown` correcto |
+| 6 — Clasificación | 🔶 | funciona; falta evolución y realtime |
+| 7a — Ampliar librería | ✅ | 66 tests |
+| 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias |
+| 8 — Administración | ❌ | — |
+| 9 — PWA | ❌ | — |
+| 10 — Producción | ❌ | — |
+
+### Lo siguiente, por orden de valor
+
+1. **PWA (fase 9).** Es lo que convierte esto en una app instalable en el móvil, que era el objetivo. Serwist, `manifest.ts`, iconos 192/512 + maskable + `apple-touch-icon`, y el prompt propio para iOS (Safari no expone `beforeinstallprompt`).
+2. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Hay que añadir las variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost`.
+3. **Administración (fase 8).** Panel con disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
+4. **Cuenta atrás en vivo** en la home y el detalle: hoy el tiempo restante se calcula en el servidor y no avanza hasta recargar.
+
+### Deuda y cosas a vigilar
+
+- **SMTP.** El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.
+- **`sync.yml` nunca se ha ejecutado de verdad.** Los secretos están puestos, pero el primer cron es el lunes. Conviene lanzarlo a mano desde la pestaña *Actions* para confirmarlo antes.
+- **Sin Docker**, no hay stack local de Supabase: las migraciones van directas al proyecto real y `supabase db dump` no funciona.
+- **3 vulnerabilidades `high`** en dependencias transitivas de Next.js. Revisar en cada actualización.
+
+### Comandos útiles
+
+```bash
+npm run dev          # servidor de desarrollo
+npm run check        # formato + lint + tipos
+npm run db:push      # aplicar migraciones nuevas
+npm run db:verify    # 25 pruebas de esquema y RLS
+.venv/Scripts/python -m motogporra_sync all   # sincronizar todo
+```
+
+---
+
 ## 14. Entorno y versiones (Fase 0 — completada)
 
 | Pieza | Versión | Nota |
