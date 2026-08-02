@@ -1,5 +1,4 @@
-import Link from 'next/link'
-
+import { AdminBackLink } from '@/components/admin/back-link'
 import { requireAdmin } from '@/lib/auth/session'
 
 /**
@@ -20,25 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-dvh flex-col">
       <header className="border-b border-zinc-800 bg-zinc-900/60">
         <div className="mx-auto flex w-full max-w-md items-center gap-3 px-5 py-4">
-          <Link
-            href="/"
-            aria-label="Volver a la aplicación"
-            className="-m-2 flex h-10 w-10 items-center justify-center text-zinc-400 transition-colors hover:text-zinc-200"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </Link>
+          <AdminBackLink />
           <span className="text-sm font-semibold text-white">Administración</span>
         </div>
       </header>

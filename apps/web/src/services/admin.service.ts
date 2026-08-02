@@ -1,3 +1,5 @@
+import { isAdmin } from '@/lib/auth/session'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import type { RaceView } from '@/services/races.service'
 import type { Database } from '@/types/database.types'
@@ -13,6 +15,51 @@ export interface AdminUser {
   avatarUrl: string | null
   role: AppRole
   joinedAt: string | null
+  /** `null` cuando no se ha podido consultar `auth.users` (ver `getUsers`). */
+  email: string | null
+  /** `null` si se desconoce; `false` significa registrado y sin confirmar. */
+  emailConfirmed: boolean | null
+}
+
+/**
+ * Email y confirmación de cada cuenta, leídos de `auth.users`.
+ *
+ * Es el **único** sitio de la aplicación web que usa `service_role`, y hace
+ * falta porque `auth.users` no se expone por la Data API: no hay política RLS
+ * que conceda esto, ni la habrá.
+ *
+ * Por eso comprueba el rol **por su cuenta**. En el resto de funciones la RLS es
+ * la red de seguridad y el `requireAdmin()` es solo experiencia de usuario;
+ * aquí no hay red debajo, así que la comprobación es la autorización de verdad.
+ *
+ * Devuelve un mapa vacío si falta la clave en el entorno, en lugar de reventar:
+ * el panel funciona sin esto, solo enseña menos.
+ */
+async function getAuthDetails(): Promise<
+  Map<string, { email: string | null; confirmed: boolean }>
+> {
+  if (!(await isAdmin())) {
+    throw new Error('Solo un administrador puede consultar las cuentas')
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    // 200 por página cubre de sobra una porra de amigos. Si algún día no
+    // llegara, hay que paginar: `listUsers` no devuelve todo de una vez.
+    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 })
+    if (error) throw error
+
+    return new Map(
+      data.users.map((u) => [
+        u.id,
+        { email: u.email ?? null, confirmed: u.email_confirmed_at !== null },
+      ]),
+    )
+  } catch (error) {
+    console.error('No se pudo consultar auth.users:', error)
+    return new Map()
+  }
 }
 
 /**
@@ -44,17 +91,17 @@ export async function getSyncRuns(limit = 20): Promise<SyncRun[]> {
  * `season_participants` apuntan a `auth.users`, no a `profiles`: sin clave
  * foránea entre ellas, PostgREST no puede incrustar nada.
  *
- * No incluye el email ni si la cuenta está confirmada — ambos viven en
- * `auth.users`, que no expone la Data API. Haría falta el cliente
- * `service_role`; queda pendiente.
+ * Ordena las cuentas sin confirmar primero: son las que piden una decisión
+ * —esperar o purgar—, y el resto de la lista no cambia nunca.
  */
 export async function getUsers(): Promise<AdminUser[]> {
   const supabase = await createClient()
 
-  const [perfiles, roles, participaciones] = await Promise.all([
+  const [perfiles, roles, participaciones, cuentas] = await Promise.all([
     supabase.from('profiles').select('id, display_name, avatar_url'),
     supabase.from('user_roles').select('user_id, role'),
     supabase.from('season_participants').select('user_id, joined_at'),
+    getAuthDetails(),
   ])
 
   const error = perfiles.error ?? roles.error ?? participaciones.error
@@ -66,14 +113,24 @@ export async function getUsers(): Promise<AdminUser[]> {
   )
 
   return (perfiles.data ?? [])
-    .map((perfil) => ({
-      userId: perfil.id,
-      displayName: perfil.display_name,
-      avatarUrl: perfil.avatar_url,
-      role: rolPorUsuario.get(perfil.id) ?? 'player',
-      joinedAt: altaPorUsuario.get(perfil.id) ?? null,
-    }))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'es'))
+    .map((perfil) => {
+      const cuenta = cuentas.get(perfil.id)
+
+      return {
+        userId: perfil.id,
+        displayName: perfil.display_name,
+        avatarUrl: perfil.avatar_url,
+        role: rolPorUsuario.get(perfil.id) ?? 'player',
+        joinedAt: altaPorUsuario.get(perfil.id) ?? null,
+        email: cuenta?.email ?? null,
+        emailConfirmed: cuenta ? cuenta.confirmed : null,
+      }
+    })
+    .sort((a, b) => {
+      if (a.emailConfirmed === false && b.emailConfirmed !== false) return -1
+      if (b.emailConfirmed === false && a.emailConfirmed !== false) return 1
+      return a.displayName.localeCompare(b.displayName, 'es')
+    })
 }
 
 /**
