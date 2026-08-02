@@ -134,6 +134,7 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 - **No resetear estado desde un `useEffect`**: la regla `react-hooks/set-state-in-effect` lo rechaza. Para estado derivado, remontar con `key`; para datos que solo existen en el navegador (`matchMedia`, `localStorage`, `navigator`), **`useSyncExternalStore`** — un `useState` con valor inicial calculado rompería la hidratación.
 - **Nada de librerías de build que enganchen por webpack**: aquí manda Turbopack, en `dev` y en `build`. Es lo que descartó Serwist (`@serwist/next` se engancha en `config.webpack()`, que Turbopack no llama nunca). Comprobar el bundler **antes** de adoptar el paquete.
 - **No usar `Set-Content` de PowerShell** sobre ficheros con acentos: destroza la codificación. Usar las herramientas de edición.
+- **Todo fichero público servido desde la raíz hay que excluirlo del matcher de `proxy.ts`.** Si no, el proxy lo redirige a `/login` y quien lo pide (un crawler, un verificador de dominio) nunca lo recibe. Ya pasó con `robots.txt`. Aplica igual a `sitemap.xml` y a `.well-known/`.
 
 ## Entorno local
 

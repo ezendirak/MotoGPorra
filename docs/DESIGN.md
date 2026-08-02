@@ -23,13 +23,13 @@
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
 | 8 — Administración | ❌ | — |
 | 9 — PWA | 🔶 | manifest, iconos y service worker verificados con `next start`; falta instalarla en un móvil real |
-| 10 — Producción | ❌ | — |
+| 10 — Producción | 🔶 | código listo (errores, 404, `robots.txt`, cabeceras); falta el despliegue en sí → [DESPLIEGUE.md](DESPLIEGUE.md) |
 
 Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pilotos (22 activos), 22 resultados oficiales y 476 líneas de clasificación.
 
 ### Lo siguiente, por orden de valor
 
-1. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Añadir variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost` — y una PWA **no se puede instalar sin HTTPS**, así que la fase 9 no se cierra del todo hasta que esto esté hecho.
+1. **Desplegar en Vercel.** Es lo único que queda de la fase 10 y **son pasos manuales**: están escritos uno a uno en [DESPLIEGUE.md](DESPLIEGUE.md). Sin esto la porra solo existe en `localhost` — y una PWA **no se puede instalar sin HTTPS**, así que la fase 9 tampoco se cierra hasta entonces.
 2. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
 3. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
 
@@ -1392,6 +1392,14 @@ El diseño (§11.5) daba por hecho Serwist. Al ir a instalarlo, dos problemas.
 Lo que de verdad hacía instalable la app era el manifest y los iconos, no el caché. Así que el worker se escribió a mano en 100 líneas: `CacheFirst` solo sobre lo público e inmutable, navegación siempre contra la red con `/offline` de red de seguridad, y todo lo demás sin interceptar. Cero dependencias, cero pasos de build, Turbopack intacto.
 
 > Lección general: **antes de adoptar una librería de build, comprobar contra qué bundler engancha.** El ecosistema de Next todavía asume webpack en muchos sitios, y este proyecto ya no lo usa.
+
+### Hallazgo de la Fase 10: el proxy se comía el `robots.txt`
+
+El matcher de `proxy.ts` excluye por nombre `manifest.webmanifest`, `sw.js` e `icons/`, y por extensión las imágenes y las fuentes. `robots.txt` no encajaba en ninguna de las dos listas, así que el proxy lo interceptaba y, al no haber sesión, devolvía un 307 a `/login`: un buscador nunca habría llegado a leer el «no indexes».
+
+Es el mismo error latente para cualquier fichero que deba servirse sin sesión, y no lo habría cazado ningún tipo ni ningún test — solo un `curl` contra el servidor construido.
+
+> Lección general: **todo lo que se sirva desde la raíz y tenga que ser público hay que añadirlo al matcher del proxy explícitamente.** Vale para `sitemap.xml`, para `.well-known/` y para cualquier fichero de verificación de dominio.
 
 ### Hallazgo de la Fase 9: `setState` dentro de un `useEffect` ahora es error de lint
 

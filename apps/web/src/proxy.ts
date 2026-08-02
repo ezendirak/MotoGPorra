@@ -17,8 +17,10 @@ export const config = {
      * Todas las rutas salvo:
      * - _next/static y _next/image (estáticos generados)
      * - favicon, manifest, service worker e iconos de la PWA
+     * - robots.txt: lo pide un crawler sin sesión, y si el proxy lo redirigiese
+     *   a /login el buscador nunca llegaría a leer el «no indexes»
      * - cualquier fichero con extensión (imágenes, fuentes...)
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
   ],
 }
