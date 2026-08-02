@@ -53,7 +53,14 @@ async function getAuthDetails(): Promise<
     return new Map(
       data.users.map((u) => [
         u.id,
-        { email: u.email ?? null, confirmed: u.email_confirmed_at !== null },
+        {
+          email: u.email ?? null,
+          // `email_confirmed_at` es OPCIONAL (`?: string`), no nullable: en una
+          // cuenta sin confirmar el campo no viene, así que vale `undefined`.
+          // Compararlo con `null` daba `true` para todo el mundo y ninguna
+          // cuenta aparecía como pendiente.
+          confirmed: Boolean(u.email_confirmed_at),
+        },
       ]),
     )
   } catch (error) {
