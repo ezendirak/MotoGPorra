@@ -156,6 +156,13 @@ class SupabaseClient:
             or []
         )
 
+    def delete(self, table: str, filters: dict[str, str]) -> None:
+        # PostgREST exige siempre un filtro en DELETE; sin él respondería 400
+        # en vez de borrar la tabla entera, pero más vale no depender de eso.
+        if not filters:
+            raise ValueError("delete() requiere al menos un filtro")
+        self._request("DELETE", table, params=filters, prefer="return=minimal")
+
     def rpc(self, function: str, args: dict[str, Any]) -> Any:
         return self._request("POST", f"rpc/{function}", json=args)
 

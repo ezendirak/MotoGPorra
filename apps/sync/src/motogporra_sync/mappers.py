@@ -189,6 +189,83 @@ def map_rider(rider: Rider) -> dict[str, Any]:
     }
 
 
+class RiderNotResolved(RuntimeError):
+    """No se ha podido casar un piloto del resultado con la tabla `riders`."""
+
+
+def resolve_rider_id(
+    entry: Any,
+    *,
+    by_motogp_id: dict[str, str],
+    by_legacy_id: dict[int, str],
+) -> str:
+    """Resuelve el piloto de una línea de clasificación a su UUID interno.
+
+    ES EL PUNTO MÁS FRÁGIL DE TODO EL SISTEMA. Los UUID de piloto del endpoint
+    de resultados pertenecen a un espacio DISTINTO al de ``GET /riders``.
+    Verificado con el podio del GP de Alemania 2026:
+
+        /riders          rider.id            = 23e50438-...
+        clasificación    rider.id            = f55b433d-...   <- NO sirve
+        clasificación    rider.riders_api_uuid = 23e50438-... <- este sí
+        ambos            legacy_id           = 7444           <- respaldo
+
+    Casar por ``rider.id`` no encontraría a nadie y todas las puntuaciones
+    saldrían a cero **en silencio**. De ahí que el fallo sea ruidoso: es
+    preferible abortar la importación de esa carrera a que la clasificación
+    mienta.
+    """
+    piloto = entry.rider
+    if piloto is None:
+        raise RiderNotResolved("La línea de clasificación no trae piloto")
+
+    if piloto.riders_api_uuid:
+        uuid = by_motogp_id.get(piloto.riders_api_uuid)
+        if uuid:
+            return uuid
+
+    if piloto.legacy_id is not None:
+        uuid = by_legacy_id.get(piloto.legacy_id)
+        if uuid:
+            return uuid
+
+    raise RiderNotResolved(
+        f"Piloto sin resolver: {piloto.full_name!r} "
+        f"(riders_api_uuid={piloto.riders_api_uuid}, legacy_id={piloto.legacy_id}). "
+        "Ejecuta el job 'riders' antes que el de resultados."
+    )
+
+
+def map_result_entry(
+    entry: Any, *, race_result_id: str, rider_id: str, constructor_id: str | None
+) -> dict[str, Any]:
+    """Una línea de la clasificación oficial.
+
+    La API solo distingue 'INSTND' (clasificado) y 'OUTSTND' (no clasificado):
+    no diferencia DNF de DNS ni de descalificación. Se guarda el booleano real
+    y el código crudo en vez de inventar estados que nunca podríamos rellenar.
+
+    Los tiempos se conservan como TEXTO tal y como llegan ('40:53.148'): nunca
+    ordenamos por tiempo —ordenamos por posición—, así que convertirlos a
+    milisegundos solo añadiría errores de parseo sin ningún beneficio.
+    """
+    estado = (entry.status or "").strip().upper()
+    return {
+        "race_result_id": race_result_id,
+        "rider_id": rider_id,
+        "position": entry.position,
+        "is_classified": estado == "INSTND" and entry.position is not None,
+        "status_raw": entry.status,
+        "total_time": entry.time,
+        "gap_to_first": entry.gap.first if entry.gap else None,
+        "gap_laps": entry.gap.lap if entry.gap else None,
+        "championship_points": entry.points,
+        "team_name": entry.team_name,
+        "constructor_id": constructor_id,
+        "number": entry.rider.number if entry.rider else None,
+    }
+
+
 def map_rider_season_entry(
     rider: Rider,
     *,

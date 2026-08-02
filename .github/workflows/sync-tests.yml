@@ -1,0 +1,41 @@
+name: Tests Python
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/motogp_client/**'
+      - 'apps/sync/**'
+      - '.github/workflows/sync-tests.yml'
+  pull_request:
+    paths:
+      - 'packages/motogp_client/**'
+      - 'apps/sync/**'
+
+concurrency:
+  group: python-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Instalar
+        run: |
+          python -m pip install --upgrade pip
+          pip install './packages/motogp_client[dev]' ./apps/sync
+
+      - name: Tests de la libreria
+        working-directory: packages/motogp_client
+        # Sin red: todos los tests usan respuestas grabadas de la API.
+        run: python -m pytest -q
+
+      - name: Comprobar que el sincronizador importa
+        run: python -c "import motogporra_sync.jobs, motogporra_sync.mappers"

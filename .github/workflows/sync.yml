@@ -1,0 +1,63 @@
+name: Sincronizacion MotoGP
+
+# Un único workflow con el job como parámetro, en lugar de cuatro ficheros
+# casi idénticos: la diferencia entre ellos es una palabra.
+on:
+  schedule:
+    # Calendario y pilotos: lunes a las 04:00 UTC. Semanal y no diario porque
+    # el calendario apenas cambia y el cierre de apuestas es el viernes;
+    # sondearlo cada día serían cientos de peticiones para nada.
+    - cron: '0 4 * * 1'
+    # Resultados: sábados y domingos cada 30 min entre 12:00 y 21:00 UTC.
+    # Sábado incluido porque el sprint también es apostable.
+    - cron: '*/30 12-21 * * 6,0'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Trabajo a ejecutar'
+        required: true
+        default: 'results'
+        type: choice
+        options: [results, calendar, riders, backfill, all]
+
+concurrency:
+  # Nunca dos sincronizaciones a la vez: los upserts son idempotentes, pero
+  # dos procesos escribiendo lo mismo solo gastan cuota.
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./packages/motogp_client ./apps/sync
+
+      - name: Determinar el trabajo
+        id: job
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 4 * * 1" ]; then
+            # El cron semanal actualiza pilotos y calendario. `all` los ejecuta
+            # en orden: los pilotos primero, porque los resultados los necesitan.
+            echo "name=all" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=results" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sincronizar
+        run: python -m motogporra_sync "${{ steps.job.outputs.name }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

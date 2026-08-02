@@ -48,7 +48,7 @@ from .exceptions import (
     NetworkError,
     NotFoundError,
 )
-from .models import Event, RaceResult, Rider, Session, Team
+from .models import ClassificationEntry, Event, RaceResult, Rider, Session, Team
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +259,28 @@ class MotoGPClient:
         )
 
     # -- API pública: sincronización de resultados --------------------------
+
+    def get_session_classification(self, session_id: str) -> list[ClassificationEntry]:
+        """Clasificación de una sesión concreta, a partir de su UUID.
+
+        Es la vía **barata** de obtener resultados: una única petición, frente
+        a las cuatro que necesita :meth:`get_race_results` para resolver
+        evento, categoría y sesión antes de pedir la clasificación.
+
+        Pensado para un consumidor que ya haya sincronizado el calendario y
+        conserve los identificadores de sesión de
+        :meth:`get_event_sessions`. Importar una temporada completa pasa así
+        de ~176 peticiones a ~44.
+
+        Args:
+            session_id: ``id`` de la sesión, tal y como lo devuelve
+                :meth:`get_event_sessions`.
+
+        Returns:
+            La clasificación completa, o lista vacía si la sesión aún no se
+            ha disputado.
+        """
+        return self._classifications.get(session_id)
 
     def get_race_results(self, round: int, category: str) -> RaceResult:
         """Resultados oficiales de carrera de un Gran Premio concreto.

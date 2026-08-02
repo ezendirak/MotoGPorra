@@ -679,8 +679,18 @@ auth.users ─┬── profiles (1:1)
 |---|---|---|---|---|
 | `calendar` | Semanal (lunes 04:00 UTC) + manual | `get_calendar_current()` + sesiones por evento | ~1 + 3×22 ≈ **67** | Upsert de `events`, `circuits`, `sessions`, `races`; recálculo de `betting_closes_at` |
 | `riders` | Semanal (lunes 04:15 UTC) + manual | `get_riders("MotoGP")` | **1** | Upsert de `riders`, `constructors`, `teams`, `rider_season_entries` |
-| `results` | Sáb. y dom. cada 30 min, 12:00–21:00 UTC + manual | `get_latest_race_results("MotoGP")` | ~**4–8** | Upsert de `race_results`, entradas y **recálculo** |
-| `backfill` | Manual / inicio de temporada | `get_completed_race_results("MotoGP")` | ~**88** | Reconciliación completa de la temporada |
+| `results` | Sáb. y dom. cada 30 min, 12:00–21:00 UTC + manual | `get_session_classification(session_id)` | **1 por sesión** | Upsert de `race_results`, entradas y **recálculo** |
+| `backfill` | Manual / revisión por sanción | Igual, sin saltar las ya importadas | ~**44** | Reimportación completa de la temporada |
+
+> ⚠️ **Optimización sobre el diseño original.** Se preveía usar
+> `get_latest_race_results()` / `get_completed_race_results()`, que resuelven
+> evento → categoría → sesión → clasificación: **4 peticiones por resultado**,
+> ~176 para una temporada entera.
+>
+> Como el job `calendar` ya guarda los 177 `motogp_session_id`, el job de
+> resultados pide la clasificación **directamente por UUID de sesión** con el
+> nuevo método `get_session_classification()`. Una petición por resultado:
+> ~44 para la temporada completa, y 1–2 en el cron del fin de semana.
 | `recalculate` | Manual | — | 0 | Recalcula puntuaciones sin volver a llamar a MotoGP |
 
 > ⚠️ **El coste no es despreciable y condiciona la frecuencia.** Cada resultado exige encadenar 4 llamadas (`events/{id}` → `results/categories` → `results/sessions` → `results/classifications`). `get_completed_race_results` recorre **las 22 rondas**: ~88 peticiones y decenas de segundos, medido en vivo. Por eso el cron dominical usa `get_latest_race_results`, que itera desde el final y **se detiene en la primera carrera con clasificación** (~4–8 peticiones), y el barrido completo queda como job manual `backfill`.
@@ -1243,7 +1253,7 @@ apps/sync/
 | **5 — Resultados y puntuación** | `recalculate_race_scores`, pantalla de resultado, comparación apuesta/resultado, histórico personal | Cargando un resultado manualmente en la base, la clasificación cuadra |
 | **6 — Clasificación** | Vista de standings, desempates, evolución, realtime | Clasificación correcta y actualizada sin recargar |
 | **7a — Ampliar `motogp-client`** ✅ | Campos de `Event`, `Session`, `Circuit`, `Rider`, `Team` y método `get_event_sessions()` (§13) | 66 tests en verde; verificado contra la API real |
-| **7b — Sincronizador** 🔶 | `apps/sync` con mappers, jobs `calendar` y `riders`, auditoría en `sync_runs` | **Temporada 2026 importada**: 22 circuitos, 22 GP, 177 sesiones, 44 carreras, 29 pilotos (22 activos). Pendiente: job `results`, workflows de Actions y disparo manual |
+| **7b — Sincronizador** ✅ | `apps/sync` con mappers y jobs `calendar`, `riders`, `results` y `backfill`; auditoría en `sync_runs`; workflows de Actions | **Temporada 2026 completa**: 22 circuitos, 22 GP, 177 sesiones, 44 carreras, 29 pilotos, 22 resultados oficiales y 476 líneas de clasificación **sin un solo piloto sin resolver**. Verificado línea a línea contra la API: 0 discrepancias. Idempotencia confirmada. Pendiente: disparo manual desde el panel de admin (fase 8) |
 | **8 — Administración** | Panel, gestión de usuarios y roles, apertura/cierre excepcional, revisión de resultados, historial de sync | El administrador opera sin tocar la base de datos |
 | **9 — PWA y pulido** | Serwist, manifest, iconos, offline del shell, prompt de instalación iOS/Android, animaciones, accesibilidad, Lighthouse | Instalable en Android e iPhone; Lighthouse PWA en verde |
 | **10 — Producción** | Dominio, backups, monitorización, Sentry, tests E2E del flujo crítico, documentación | Temporada real en marcha |
