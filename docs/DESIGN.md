@@ -1,6 +1,44 @@
-# MotoGPorra — Diseño del sistema
+# MotoGPorra — Diseño y diario del proyecto
 
-> Estado: **diseño aprobado** (01/08/2026) · esquema validado contra la API real de MotoGP · implementación en curso desde la Fase 0.
+> **Qué es este documento.** El registro vivo: qué se ha hecho, por qué se decidió así y qué queda pendiente. Se actualiza cada sesión.
+>
+> Las **reglas estables** —stack, convenciones, comandos, trampas conocidas— están en [CLAUDE.md](../CLAUDE.md), que se carga en contexto automáticamente. Si algo deja de cambiar, muévelo allí.
+
+---
+
+## Estado actual
+
+**Última actualización: 02/08/2026.**
+
+| Fase | Estado | Comprobado con |
+|---|---|---|
+| 0 — Fundación | ✅ | CI en verde |
+| 1 — Base de datos | ✅ | `npm run db:verify` → 25/25 |
+| 2 — Autenticación | ✅ | registro y login reales |
+| 3 — Shell y calendario | ✅ | build + rutas protegidas |
+| 4 — Apuestas | ✅ | apuesta real creada y puntuada |
+| 5 — Resultados y puntuación | ✅ | prueba en Mugello: podio real, `breakdown` correcto |
+| 6 — Clasificación | 🔶 | funciona; falta evolución y realtime |
+| 7a — Ampliar librería | ✅ | 66 tests |
+| 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
+| 8 — Administración | ❌ | — |
+| 9 — PWA | ❌ | — |
+| 10 — Producción | ❌ | — |
+
+Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pilotos (22 activos), 22 resultados oficiales y 476 líneas de clasificación.
+
+### Lo siguiente, por orden de valor
+
+1. **PWA (fase 9).** Es lo que convierte esto en una app instalable, que era el objetivo. Serwist, `manifest.ts`, iconos 192/512 + maskable + `apple-touch-icon`, y prompt propio para iOS (Safari no expone `beforeinstallprompt`).
+2. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Añadir variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost`.
+3. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
+4. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
+
+### Deuda y cosas a vigilar
+
+- **SMTP.** El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.
+- **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión que las resuelva hoy; `npm audit fix --force` degradaría el framework.
+- **El cron automático nunca se ha disparado solo.** La ejecución manual del 02/08 funcionó; el primer `schedule` es el lunes 04:00 UTC.
 
 ---
 
@@ -1298,54 +1336,9 @@ Que `apps/sync` lea directamente de `.raw` y de los endpoints privados. Funciona
 
 ---
 
-## 15. Estado actual y cómo continuar
+## 14. Versiones y hallazgos de la implementación
 
-**Última actualización: 02/08/2026.**
-
-### Qué funciona hoy
-
-| Fase | Estado | Comprobado con |
-|---|---|---|
-| 0 — Fundación | ✅ | CI en verde |
-| 1 — Base de datos | ✅ | `npm run db:verify` → 25/25 |
-| 2 — Autenticación | ✅ | registro y login reales |
-| 3 — Shell y calendario | ✅ | build + rutas protegidas |
-| 4 — Apuestas | ✅ | apuesta real creada y puntuada |
-| 5 — Resultados y puntuación | ✅ | prueba en Mugello: podio real, 0 puntos, `breakdown` correcto |
-| 6 — Clasificación | 🔶 | funciona; falta evolución y realtime |
-| 7a — Ampliar librería | ✅ | 66 tests |
-| 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias |
-| 8 — Administración | ❌ | — |
-| 9 — PWA | ❌ | — |
-| 10 — Producción | ❌ | — |
-
-### Lo siguiente, por orden de valor
-
-1. **PWA (fase 9).** Es lo que convierte esto en una app instalable en el móvil, que era el objetivo. Serwist, `manifest.ts`, iconos 192/512 + maskable + `apple-touch-icon`, y el prompt propio para iOS (Safari no expone `beforeinstallprompt`).
-2. **Despliegue en Vercel (fase 10).** *Root Directory* = `apps/web`. Hay que añadir las variables de entorno y, en Supabase, la URL de producción a *Redirect URLs*. Sin esto la porra solo existe en `localhost`.
-3. **Administración (fase 8).** Panel con disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
-4. **Cuenta atrás en vivo** en la home y el detalle: hoy el tiempo restante se calcula en el servidor y no avanza hasta recargar.
-
-### Deuda y cosas a vigilar
-
-- **SMTP.** El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.
-- **`sync.yml` nunca se ha ejecutado de verdad.** Los secretos están puestos, pero el primer cron es el lunes. Conviene lanzarlo a mano desde la pestaña *Actions* para confirmarlo antes.
-- **Sin Docker**, no hay stack local de Supabase: las migraciones van directas al proyecto real y `supabase db dump` no funciona.
-- **3 vulnerabilidades `high`** en dependencias transitivas de Next.js. Revisar en cada actualización.
-
-### Comandos útiles
-
-```bash
-npm run dev          # servidor de desarrollo
-npm run check        # formato + lint + tipos
-npm run db:push      # aplicar migraciones nuevas
-npm run db:verify    # 25 pruebas de esquema y RLS
-.venv/Scripts/python -m motogporra_sync all   # sincronizar todo
-```
-
----
-
-## 14. Entorno y versiones (Fase 0 — completada)
+Lo que se descubrió construyendo, y que no estaba en el diseño sobre el papel.
 
 | Pieza | Versión | Nota |
 |---|---|---|
@@ -1358,24 +1351,7 @@ npm run db:verify    # 25 pruebas de esquema y RLS
 | Node | 24.18.1 LTS | Misma versión en local y en CI |
 | Git | 2.55.0 | — |
 
-### ⚠️ Cambios de Next.js 16 que afectan a este diseño
-
-| Cambio | Impacto |
-|---|---|
-| `middleware.ts` → **`proxy.ts`**, sin runtime `edge` | §3.1, §7.3, §11.1 actualizados |
-| `cookies()` / `headers()` / `params` / `searchParams` **solo asíncronos** | Todo cliente Supabase de servidor será `await` |
-| **`next lint` eliminado**; `next build` ya no lintea | El lint es un paso propio en CI, no un efecto colateral del build |
-| `revalidateTag` exige segundo argumento; llega **`updateTag`** | §8.3: `updateTag` para guardar apuestas |
-| `serverRuntimeConfig` / `publicRuntimeConfig` eliminados | Ya usábamos variables de entorno |
-| Rutas paralelas exigen `default.js` explícito | A tener en cuenta si se usan modales interceptados |
-
-### Reglas de arquitectura verificadas por el linter
-
-Las reglas de §11.4 dejan de depender de la disciplina y las comprueba ESLint:
-
-1. **Nadie importa `@supabase/supabase-js` ni `@supabase/ssr`** fuera de `src/lib/supabase/`.
-2. **`src/utils/` no importa nada del proyecto** (`@/*` prohibido): funciones puras.
-3. **`src/services/` no importa React**: lógica de negocio testeable sin JSX.
+> Los cambios de ruptura de Next.js 16, las reglas de arquitectura que verifica el linter y las trampas de la API de MotoGP están recogidos en [CLAUDE.md](../CLAUDE.md). Aquí solo queda el **relato de cómo se descubrieron**.
 
 ### Hallazgo de la Fase 1: `FOR SHARE` y RLS
 
@@ -1387,15 +1363,23 @@ Las reglas de §11.4 dejan de depender de la disciplina y las comprueba ESLint:
 
 > Lección general: **cualquier cláusula de bloqueo dentro de una función `SECURITY INVOKER` exige que el rol tenga política de UPDATE sobre esa tabla.** Conviene recordarlo antes de añadir `FOR UPDATE` en cualquier función futura.
 
-### Deuda conocida
+### Hallazgo de la Fase 7b: la conexión imposible
 
-- **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión de Next.js que las resuelva hoy; `npm audit fix --force` degradaría el framework. Revisar en cada actualización de Next.
-- **`packages/motogp_client/.venv`** sobrevivió al movimiento a `packages/`, pero conviene recrearlo al clonar el repo en otra máquina (está en `.gitignore`).
+El diseño preveía `psycopg` contra el pooler de Supabase, por la atomicidad. Al implementarlo resultó inviable: el host directo solo publica registro **AAAA** y la red de desarrollo no tiene ruta IPv6 (Node ni siquiera resuelve el nombre), y los poolers de `eu-central-1` responden `tenant/user not found`.
+
+Se cambió a PostgREST sobre HTTPS, asumiendo la pérdida de atomicidad por job y compensándola con idempotencia. Migrar de vuelta, si algún día se ejecuta desde un entorno con IPv6, es cambiar únicamente `apps/sync/db.py`.
+
+### Hallazgo de la Fase 7b: 4 peticiones donde bastaba 1
+
+El diseño preveía `get_completed_race_results()`, que resuelve evento → categoría → sesión → clasificación: 4 peticiones por resultado, ~176 por temporada. Pero el job `calendar` ya guarda los 177 `motogp_session_id`, así que se añadió `get_session_classification(session_id)` y el coste bajó a **1 petición por resultado**: ~44 por temporada completa y 1-2 en el cron del fin de semana.
 
 ---
 
-## Estado de las decisiones
+## 15. Cómo mantener estos documentos
 
-**Todos los puntos abiertos están resueltos** (ver tabla al inicio). El diseño queda aprobado y la implementación arranca por la Fase 0.
+- **Una decisión nueva** → fila en «Decisiones cerradas», con su consecuencia.
+- **Un hallazgo al implementar** → apartado en §14, contando qué se creía y qué resultó ser.
+- **Cambio de estado de una fase** → tabla de «Estado actual», y actualizar la fecha.
+- **Una regla que ya no va a cambiar** (convención, comando, trampa conocida) → **muévela a [CLAUDE.md](../CLAUDE.md)** y bórrala de aquí. Que un dato viva en dos sitios es garantía de que acabarán contradiciéndose.
 
-`scoring_rules` conserva la columna `points_podium_any` (hoy a 0) y admitiría un multiplicador por `kind` si algún día se quisiera que el sprint valga menos — pero **la regla vigente es 1 punto por posición acertada, igual en sprint y en carrera**.
+`scoring_rules` conserva la columna `points_podium_any` (hoy a 0) y admitiría un multiplicador por `kind` si algún día se quisiera que el sprint valga menos — pero **la regla vigente es 1 punto por posición acertada, igual en sprint y en carrera**. Verificado en la prueba de Mugello: cambiar la regla y recalcular altera los puntos, y revertirla los restaura.

@@ -47,7 +47,12 @@ npm run dev
 
 ## Documentación
 
-El [documento de diseño](docs/DESIGN.md) cubre el modelo de dominio, el esquema completo de PostgreSQL, la estrategia de sincronización, los flujos de autenticación, apuestas y puntuación, las políticas RLS y el roadmap por fases. Conviene leerlo antes de tocar el esquema.
+| Fichero | Qué contiene |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | Reglas estables: stack, convenciones, comandos, seguridad y trampas conocidas de Next.js 16 y de la API de MotoGP |
+| [docs/DESIGN.md](docs/DESIGN.md) | Diseño completo y diario del proyecto: estado por fases, decisiones y por qué, esquema de base de datos y flujos |
+
+Conviene leer el diseño antes de tocar el esquema.
 
 ## Estado
 
