@@ -49,6 +49,26 @@ export async function getProfile() {
 }
 
 /**
+ * ¿Es administrador el usuario actual? Sin redirigir ni cortar el render.
+ *
+ * Existe para decidir si se pinta el acceso al panel. `requireAdmin()` no vale
+ * para eso: lanza `notFound()`, que abortaría la página entera.
+ */
+export async function isAdmin(): Promise<boolean> {
+  const user = await getUser()
+  if (!user) return false
+
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  return data?.role === 'admin'
+}
+
+/**
  * Exige rol de administrador.
  *
  * Devuelve 404 en vez de 403 a propósito: quien no es administrador no tiene

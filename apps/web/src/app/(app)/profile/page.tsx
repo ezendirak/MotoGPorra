@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 
 import { logout } from '@/lib/auth/actions'
-import { getProfile, getUser } from '@/lib/auth/session'
+import { getProfile, getUser, isAdmin } from '@/lib/auth/session'
 import { getMyHistory } from '@/services/standings.service'
 import { countryFlag } from '@/utils/date'
 
@@ -10,10 +11,11 @@ export const metadata: Metadata = { title: 'Perfil' }
 const MEDALLAS = ['🥇', '🥈', '🥉'] as const
 
 export default async function ProfilePage() {
-  const [user, profile, historial] = await Promise.all([
+  const [user, profile, historial, esAdmin] = await Promise.all([
     getUser(),
     getProfile(),
     getMyHistory(),
+    isAdmin(),
   ])
 
   const total = historial.reduce((suma, fila) => suma + fila.points, 0)
@@ -88,6 +90,19 @@ export default async function ProfilePage() {
           </ul>
         )}
       </section>
+
+      {/*
+        Única entrada al panel: no va en la navegación inferior porque es un
+        destino ocasional y ocuparía un hueco de los cuatro a quien no lo usa.
+      */}
+      {esAdmin && (
+        <Link
+          href="/admin"
+          className="flex h-12 items-center justify-center rounded-xl border border-zinc-800 text-sm font-medium text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-200"
+        >
+          Administración
+        </Link>
+      )}
 
       <form action={logout} className="pt-2">
         <button
