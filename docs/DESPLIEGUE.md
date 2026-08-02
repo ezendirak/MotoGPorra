@@ -61,16 +61,15 @@ En *Authentication → URL Configuration*:
 - **Site URL**: la misma que `NEXT_PUBLIC_SITE_URL`.
 - **Redirect URLs**: `https://<dominio>/**` — **con el comodín**.
 
-> ⚠️ **El comodín no es opcional.** Cuando el `redirectTo` no casa con la lista,
-> Supabase no da error: cae de vuelta al **Site URL**. Si este sigue apuntando a
-> `localhost`, el enlace del correo lleva a localhost y parece un fallo de la app.
+> ⚠️ **Si se olvida el Site URL, el síntoma engaña.** Cuando el `redirectTo` no
+> casa con la lista, Supabase no da error: cae de vuelta al **Site URL**. Si este
+> sigue en `localhost`, el enlace del correo lleva a localhost y parece un fallo
+> del código, no de la configuración. Pasó al desplegar.
 >
-> Añadir solo `/auth/callback` **no basta**: la recuperación de contraseña envía
-> `…/auth/callback?next=/reset-password` (`lib/auth/actions.ts:129`), con query
-> string, y no casa con la ruta exacta. El resultado es el peor posible: el
-> registro funciona y la recuperación va a localhost, así que parece un problema
-> del código y no de la configuración. `**` cubre ambos y cualquier redirección
-> futura.
+> El comodín `/**` se recomienda porque la app manda dos destinos distintos —
+> `…/auth/callback` en el registro y `…/auth/callback?next=/reset-password` en la
+> recuperación (`lib/auth/actions.ts:106` y `:129`)— y así se cubren ambos y
+> cualquiera que se añada después sin tener que volver aquí.
 
 ## 4. SMTP — bloqueante antes de invitar a nadie
 
