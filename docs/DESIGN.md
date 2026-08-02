@@ -1226,7 +1226,7 @@ apps/sync/
 | Fase | Contenido | Entregable verificable |
 |---|---|---|
 | **0 — Fundación** ✅ | Monorepo, Next.js 16 + TS estricto + Tailwind 4, ESLint/Prettier con reglas de arquitectura, validación de entorno con Zod, CI | `format` + `lint` + `typecheck` + `build` en verde. Pendiente: `git init` y proyecto Supabase |
-| **1 — Base de datos** | Todas las migraciones (§4), enums, índices, constraints, funciones, RLS, seed. Tipos TS generados | Migraciones aplicables desde cero; tests de RLS que verifican que un usuario no ve la apuesta ajena antes del cierre |
+| **1 — Base de datos** ✅ | 14 migraciones (§4), enums, índices, constraints, funciones, RLS, datos de referencia | Aplicadas y verificadas: `npm run db:verify` pasa 25/25, incluido que un usuario no ve la apuesta ajena antes del cierre. Pendiente: tipos TS generados (fase 2) |
 | **2 — Autenticación** | Registro, login, verificación, recuperación, trigger `handle_new_user`, hook de claim de rol, middleware, layouts protegidos | Ciclo completo de alta y recuperación desde el móvil |
 | **3 — Shell y datos de sólo lectura** | Layout móvil, bottom nav, calendario, detalle de carrera, ficha de piloto. Datos cargados a mano en la base para desarrollar sin sincronizador | Navegación completa con datos reales de una temporada |
 | **4 — Apuestas** | `place_bet`, formulario, selector de pilotos, cuenta atrás, edición mientras esté abierta, estado vacío/cerrado | Un usuario apuesta y edita desde el móvil; el cierre se respeta con reloj manipulado |
@@ -1309,6 +1309,16 @@ Las reglas de §11.4 dejan de depender de la disciplina y las comprueba ESLint:
 1. **Nadie importa `@supabase/supabase-js` ni `@supabase/ssr`** fuera de `src/lib/supabase/`.
 2. **`src/utils/` no importa nada del proyecto** (`@/*` prohibido): funciones puras.
 3. **`src/services/` no importa React**: lógica de negocio testeable sin JSX.
+
+### Hallazgo de la Fase 1: `FOR SHARE` y RLS
+
+`place_bet` leía la carrera con `SELECT ... FOR SHARE` como red de seguridad frente a modificaciones concurrentes. Fallaba **siempre** con `RACE_NOT_FOUND`.
+
+**Causa:** bajo RLS, PostgreSQL evalúa también las políticas de **UPDATE** en cualquier consulta con cláusula de bloqueo — bloquear una fila se considera intención de modificarla. Como `races` solo tiene política de UPDATE para administradores, un jugador normal no obtenía ninguna fila aunque la carrera existiera y estuviera abierta.
+
+**Corregido** en `20260802001300`: se elimina el bloqueo. No hacía falta, porque la ventana temporal ya se valida dos veces de forma independiente dentro de la misma transacción — en `internal.is_betting_open()` y en la política RLS de INSERT sobre `bets`.
+
+> Lección general: **cualquier cláusula de bloqueo dentro de una función `SECURITY INVOKER` exige que el rol tenga política de UPDATE sobre esa tabla.** Conviene recordarlo antes de añadir `FOR UPDATE` en cualquier función futura.
 
 ### Deuda conocida
 

@@ -17,7 +17,10 @@
     "typecheck": "npm run typecheck --workspace=web",
     "format": "npm run format --workspace=web",
     "format:check": "npm run format:check --workspace=web",
-    "check": "npm run format:check && npm run lint && npm run typecheck"
+    "check": "npm run format:check && npm run lint && npm run typecheck",
+    "db:push": "supabase db push --linked",
+    "db:diff": "supabase migration list --linked",
+    "db:verify": "node supabase/tests/verify-phase1.mjs"
   },
   "devDependencies": {
     "supabase": "2.111.0"
