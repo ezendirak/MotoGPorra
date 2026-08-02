@@ -177,7 +177,17 @@ El sincronizador usa `service_role` y por tanto **bypassa RLS**. Dos opciones:
 - **A) SDK `supabase-py`** sobre PostgREST. Sencillo, sin gestionar conexiones. Los upserts por lote van bien hasta unos miles de filas.
 - **B) Conexión Postgres directa** (`psycopg` + pooler de Supabase). Permite transacciones multi-tabla reales, `COPY` y llamar a funciones SQL con control fino.
 
-**Recomendación:** B (`psycopg` contra el pooler en modo `session`). El sincronizador necesita atomicidad real: importar el resultado y recalcular puntuaciones debe ser todo-o-nada. Con PostgREST cada llamada es su propia transacción.
+**Recomendación original:** B (`psycopg` contra el pooler en modo `session`), por la atomicidad.
+
+> ⚠️ **Decisión revisada durante la implementación: se usa A (PostgREST).**
+>
+> **Motivo:** Supabase solo publica un registro **AAAA** para el host directo (`db.<ref>.supabase.co`) y la red de desarrollo no tiene ruta IPv6 — `Test-NetConnection` falla y Node ni siquiera resuelve el nombre. Los endpoints de pooler de la región del proyecto (`eu-central-1`) responden `tenant/user not found`, así que tampoco hay una cadena de conexión alcanzable por IPv4. PostgREST viaja por HTTPS y funciona desde cualquier red.
+>
+> **Coste asumido:** cada llamada es su propia transacción, luego un job no puede ser atómico de extremo a extremo. Si el proceso muere a mitad de una importación, quedan datos parcialmente escritos.
+>
+> **Cómo se compensa:** todos los jobs son **idempotentes** — upserts por `motogp_*_id` y reemplazo completo de colecciones —, de modo que una ejecución interrumpida se arregla repitiéndola. No es equivalente a una transacción, pero cubre el caso real: aquí no hay escrituras que dejen el sistema en un estado inconsistente *observable*, porque las puntuaciones se recalculan con `recalculate_race_scores` **después** de que las entradas del resultado estén completas, y esa función sí es atómica por ser una única sentencia SQL.
+>
+> **Cuándo revisarlo:** si en el futuro se ejecuta el sync desde un entorno con IPv6 (GitHub Actions lo tiene), se puede migrar a `psycopg` cambiando únicamente `apps/sync/db.py`. Los jobs y los mappers no se enteran.
 
 ### 3.4 Contrato de datos
 
@@ -1232,8 +1242,8 @@ apps/sync/
 | **4 — Apuestas** | `place_bet`, formulario, selector de pilotos, cuenta atrás, edición mientras esté abierta, estado vacío/cerrado | Un usuario apuesta y edita desde el móvil; el cierre se respeta con reloj manipulado |
 | **5 — Resultados y puntuación** | `recalculate_race_scores`, pantalla de resultado, comparación apuesta/resultado, histórico personal | Cargando un resultado manualmente en la base, la clasificación cuadra |
 | **6 — Clasificación** | Vista de standings, desempates, evolución, realtime | Clasificación correcta y actualizada sin recargar |
-| **7a — Ampliar `motogp-client`** | Modelar los campos que la API ya devuelve pero la librería no expone, y publicar sesiones en la API pública (ver §13) | `pytest` verde; el sync puede obtener fechas de sesión sin tocar atributos privados |
-| **7b — Sincronizador** | Implementación de `apps/sync`, mappers, upserts, `sync_runs`, workflows de GitHub Actions, disparo manual desde admin | Una temporada completa importada desde cero, reejecutable sin duplicados |
+| **7a — Ampliar `motogp-client`** ✅ | Campos de `Event`, `Session`, `Circuit`, `Rider`, `Team` y método `get_event_sessions()` (§13) | 66 tests en verde; verificado contra la API real |
+| **7b — Sincronizador** 🔶 | `apps/sync` con mappers, jobs `calendar` y `riders`, auditoría en `sync_runs` | **Temporada 2026 importada**: 22 circuitos, 22 GP, 177 sesiones, 44 carreras, 29 pilotos (22 activos). Pendiente: job `results`, workflows de Actions y disparo manual |
 | **8 — Administración** | Panel, gestión de usuarios y roles, apertura/cierre excepcional, revisión de resultados, historial de sync | El administrador opera sin tocar la base de datos |
 | **9 — PWA y pulido** | Serwist, manifest, iconos, offline del shell, prompt de instalación iOS/Android, animaciones, accesibilidad, Lighthouse | Instalable en Android e iPhone; Lighthouse PWA en verde |
 | **10 — Producción** | Dominio, backups, monitorización, Sentry, tests E2E del flujo crítico, documentación | Temporada real en marcha |
