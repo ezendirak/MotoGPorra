@@ -22,8 +22,8 @@
 | 7a — Ampliar librería | ✅ | 66 tests |
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
 | 8 — Administración | ❌ | — |
-| 9 — PWA | 🔶 | manifest, iconos y service worker verificados con `next start`; falta instalarla en un móvil real |
-| 10 — Producción | 🔶 | código listo (errores, 404, `robots.txt`, cabeceras); falta el despliegue en sí → [DESPLIEGUE.md](DESPLIEGUE.md) |
+| 9 — PWA | ✅ | instalada desde el móvil en `motogporra.vercel.app` |
+| 10 — Producción | 🔶 | desplegada en Vercel, SMTP propio, alta y recuperación probadas; faltan backups, monitorización y tests E2E |
 
 Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pilotos (22 activos), 22 resultados oficiales y 476 líneas de clasificación.
 
@@ -31,11 +31,14 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 
 1. **Desplegar en Vercel.** Es lo único que queda de la fase 10 y **son pasos manuales**: están escritos uno a uno en [DESPLIEGUE.md](DESPLIEGUE.md). Sin esto la porra solo existe en `localhost` — y una PWA **no se puede instalar sin HTTPS**, así que la fase 9 tampoco se cierra hasta entonces.
 2. **Administración (fase 8).** Disparo manual del sync vía `workflow_dispatch` y apertura/cierre excepcional — el mecanismo `status_override` ya está probado.
+
+   Al listar usuarios hay que **distinguir las cuentas sin confirmar**. `signUp` inserta en `auth.users` antes de la confirmación y el trigger salta ahí mismo, así que una cuenta sin confirmar ya tiene perfil, rol e inscripción en la temporada — y **ya reserva su nombre visible** por el índice único. Hoy no se nota (nadie lee `season_participants`, y la clasificación deriva de `race_scores`, así que quien no ha apostado no aparece), pero en el panel saldrán mezcladas con las buenas. Filtrar por `email_confirmed_at`, o purgar las que lleven días sin confirmar.
 3. **Cuenta atrás en vivo.** Hoy el tiempo restante se calcula en servidor y no avanza hasta recargar.
 
 ### Deuda y cosas a vigilar
 
-- **SMTP.** El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.
+- **Los correos salen desde una cuenta personal de Gmail** (ver §14). Funciona y es gratis, pero los primeros mensajes caen en Spam o Promociones hasta que alguien los marca, y el remitente es una dirección personal en vez de algo tipo `porra@…`. El día que haya dominio propio, se pasa a un proveedor con DKIM y se acabó.
+- **Límite de 30 correos/hora**, el que Supabase pone por defecto tras activar SMTP propio. Ajustable en *Authentication → Rate Limits*. Con ~20 participantes solo aprieta si todos se dan de alta la misma tarde.
 - **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión que las resuelva hoy; `npm audit fix --force` degradaría el framework.
 - **El cron automático nunca se ha disparado solo.** La ejecución manual del 02/08 funcionó; el primer `schedule` es el lunes 04:00 UTC.
 - **La PWA no se ha instalado nunca en un móvil de verdad.** El manifest, los iconos y el service worker están verificados sirviendo desde `next start`, pero el navegador exige HTTPS para instalar: hasta que no haya despliegue no se sabe si el icono se ve bien en una pantalla de inicio ni si el prompt de iOS sale donde debe.
@@ -1392,6 +1395,19 @@ El diseño (§11.5) daba por hecho Serwist. Al ir a instalarlo, dos problemas.
 Lo que de verdad hacía instalable la app era el manifest y los iconos, no el caché. Así que el worker se escribió a mano en 100 líneas: `CacheFirst` solo sobre lo público e inmutable, navegación siempre contra la red con `/offline` de red de seguridad, y todo lo demás sin interceptar. Cero dependencias, cero pasos de build, Turbopack intacto.
 
 > Lección general: **antes de adoptar una librería de build, comprobar contra qué bundler engancha.** El ecosistema de Next todavía asume webpack en muchos sitios, y este proyecto ya no lo usa.
+
+### Hallazgo de la Fase 10: el SMTP integrado no es un límite de volumen, es un muro
+
+Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Antes de invitar a nadie hay que configurar uno propio (Resend tiene plan gratuito), o los registros fallarán en silencio.»* Estaba mal en las cuatro cosas que afirmaba.
+
+1. **Son 2 correos/hora**, no 2-3.
+2. **El límite de volumen es lo de menos.** El servicio integrado *«se niega a entregar mensajes a direcciones que no formen parte del equipo del proyecto»*: a cualquier otro destinatario responde `Email address not authorized`. Con SMTP propio no era «los registros irían lentos» — es que **ningún participante podía darse de alta**, nunca, esperase lo que esperase.
+3. **No fallaba en silencio**, devolvía un error explícito. El fallo silencioso lo habíamos supuesto.
+4. **Resend exige un dominio propio.** Su plan gratuito existe, pero no hay remitente compartido para enviar a terceros: sin dominio verificado no sirve para esto. Recomendarlo sin decirlo mandaba a comprar un dominio sin avisar.
+
+**Resuelto** con SMTP de Gmail y contraseña de aplicación: `smtp.gmail.com:587`, sin dominio y sin coste. Tras activarlo, Supabase sube el tope a 30 correos/hora, ajustable.
+
+> Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
 
 ### Hallazgo de la Fase 10: el proxy se comía el `robots.txt`
 

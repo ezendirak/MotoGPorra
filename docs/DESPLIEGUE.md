@@ -59,20 +59,47 @@ En *Settings → Environment Variables*. Los valores están en tu `.env` y
 En *Authentication → URL Configuration*:
 
 - **Site URL**: la misma que `NEXT_PUBLIC_SITE_URL`.
-- **Redirect URLs**: añadir `https://<dominio>/auth/callback`.
+- **Redirect URLs**: `https://<dominio>/**` — **con el comodín**.
 
-Sin esto, Supabase rechaza la redirección y el usuario acaba en una página de
-error tras pinchar el enlace del correo, aunque la cuenta se haya creado bien.
+> ⚠️ **El comodín no es opcional.** Cuando el `redirectTo` no casa con la lista,
+> Supabase no da error: cae de vuelta al **Site URL**. Si este sigue apuntando a
+> `localhost`, el enlace del correo lleva a localhost y parece un fallo de la app.
+>
+> Añadir solo `/auth/callback` **no basta**: la recuperación de contraseña envía
+> `…/auth/callback?next=/reset-password` (`lib/auth/actions.ts:129`), con query
+> string, y no casa con la ruta exacta. El resultado es el peor posible: el
+> registro funciona y la recuperación va a localhost, así que parece un problema
+> del código y no de la configuración. `**` cubre ambos y cualquier redirección
+> futura.
 
 ## 4. SMTP — bloqueante antes de invitar a nadie
 
-El SMTP integrado de Supabase manda **2-3 correos por hora** y está pensado solo
-para desarrollo. Con más de dos personas dándose de alta el mismo día, los
-registros empiezan a fallar **en silencio**: la cuenta se crea, el correo no
-sale, y el participante se queda esperando una confirmación que no llega.
+El SMTP integrado de Supabase **no vale**, y no por el volumen: además de
+limitar a 2 correos/hora, *se niega a entregar a cualquier dirección que no sea
+del equipo del proyecto* y responde `Email address not authorized`. Sin SMTP
+propio, el único que puede registrarse eres tú.
 
-Hay que configurar un SMTP propio en *Authentication → Emails → SMTP Settings*
-antes de repartir el enlace. Resend tiene plan gratuito suficiente para esto.
+Configurado con **Gmail y contraseña de aplicación**, que no exige dominio
+propio (Resend y compañía sí lo exigen: no hay remitente compartido para enviar
+a terceros).
+
+1. Con verificación en 2 pasos activa, crear una contraseña de aplicación en
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+   Google la muestra en cuatro grupos: **se pega sin los espacios**.
+2. *Authentication → Emails → SMTP Settings*:
+
+   | Campo | Valor |
+   |---|---|
+   | Host | `smtp.gmail.com` |
+   | Port | `587` |
+   | Username / Sender email | la misma dirección de Gmail — Gmail reescribe el `From` a la cuenta autenticada, así que si no coinciden los envíos salen mal |
+   | Password | la contraseña de aplicación |
+
+3. Subir el tope en *Authentication → Rate Limits*: al activar SMTP propio queda
+   en 30 correos/hora.
+
+> Los primeros mensajes caen en Spam o Promociones hasta que alguien los marca.
+> Conviene avisarlo al repartir el enlace.
 
 ---
 
