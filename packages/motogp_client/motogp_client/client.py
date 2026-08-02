@@ -48,7 +48,7 @@ from .exceptions import (
     NetworkError,
     NotFoundError,
 )
-from .models import Event, RaceResult, Rider, Team
+from .models import Event, RaceResult, Rider, Session, Team
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +212,52 @@ class MotoGPClient:
         """
         return self._teams.list(category=category)
 
+    def get_event_sessions(self, event_id: str, category: str) -> list[Session]:
+        """Sesiones de un Gran Premio para una categoría, ordenadas por fecha.
+
+        Devuelve las 8 sesiones del fin de semana (FP1, PR, FP2, Q1, Q2, SPR,
+        WUP, RAC) con su hora de inicio **en UTC**.
+
+        Encapsula la cadena interna ``events/{id}`` → ``results/categories``
+        → ``results/sessions``, que hasta ahora solo existía dentro de
+        :meth:`_build_race_result`. Sin este método, un consumidor que
+        necesitara los horarios tendría que usar los sub-endpoints privados
+        del cliente, rompiendo el encapsulamiento que justifica esta librería.
+
+        Args:
+            event_id: ``id`` del evento tal y como lo devuelve
+                :meth:`get_calendar_current`.
+            category: p.ej. ``"MotoGP"``.
+
+        Returns:
+            Las sesiones ordenadas cronológicamente. Las que no tengan fecha
+            se colocan al final en vez de romper la ordenación.
+
+        Raises:
+            NotFoundError: Si el evento no existe.
+            InvalidCategoryError: Si el evento no tiene esa categoría.
+            MotoGPError: Si el evento no expone ``event_uuid`` de resultados
+                (ocurre con tests y eventos promocionales).
+        """
+        event = self._events.get_detail(event_id)
+
+        if event.event_uuid is None:
+            raise MotoGPError(
+                f"El evento '{event.name}' no tiene event_uuid de resultados: "
+                "es un test o un evento promocional, no un Gran Premio."
+            )
+
+        resolved_category = self._events.resolve_category(event, category)
+        category_uuid = self._sessions.resolve_category_uuid(
+            event.event_uuid, resolved_category.name
+        )
+        sessions = self._sessions.list(event.event_uuid, category_uuid)
+
+        return sorted(
+            sessions,
+            key=lambda s: (s.date is None, s.date),
+        )
+
     # -- API pública: sincronización de resultados --------------------------
 
     def get_race_results(self, round: int, category: str) -> RaceResult:
@@ -339,6 +385,7 @@ class MotoGPClient:
             category=resolved_category.name,
             round=round_number,
             session_type=session_type,
+            session_id=session.id,
             classification=entries,
         )
 
