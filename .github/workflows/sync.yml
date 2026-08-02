@@ -19,6 +19,14 @@ on:
         default: 'results'
         type: choice
         options: [results, calendar, riders, backfill, all]
+      triggered_by:
+        # Lo rellena el panel de administración con el UUID del administrador,
+        # y queda en `sync_runs.triggered_by`. Vacío = ejecución automática,
+        # que es como distingue las dos la auditoría (§4.11). Lanzándolo a
+        # mano desde esta pantalla se deja en blanco.
+        description: 'UUID del administrador que lo lanza (lo rellena la app)'
+        required: false
+        type: string
 
 concurrency:
   # Nunca dos sincronizaciones a la vez: los upserts son idempotentes, pero
@@ -61,3 +69,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Vacío en las ejecuciones por cron: `inputs` no existe ahí.
+          MOTOGPORRA_TRIGGERED_BY: ${{ inputs.triggered_by }}

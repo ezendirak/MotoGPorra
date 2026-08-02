@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { requireAdmin } from '@/lib/auth/session'
-import { setRaceStatusOverride, setUserRole } from '@/services/admin.service'
+import { getSyncRuns, setRaceStatusOverride, setUserRole } from '@/services/admin.service'
+import { dispararSync, TRABAJOS } from '@/services/sync.service'
 import { errorState, successState, type ActionState } from '@/types/api'
 
 /**
@@ -56,6 +57,47 @@ export async function overrideRaceStatus(
     status === 'auto'
       ? 'Estado devuelto al cálculo automático'
       : `Estado forzado a «${status}»`,
+  )
+}
+
+const syncSchema = z.object({ job: z.enum(TRABAJOS) })
+
+export async function runSync(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const admin = await requireAdmin()
+
+  const parsed = syncSchema.safeParse({ job: formData.get('job') })
+  if (!parsed.success) return errorState('Trabajo no válido')
+
+  // Freno best-effort contra el doble clic y contra lanzar cuatro seguidas.
+  //
+  // Es "best-effort" de verdad y no una promesa: `sync_runs` la escribe el
+  // propio job, que tarda ~30 s en arrancar en GitHub, así que dos pulsaciones
+  // muy seguidas no lo verían. Lo que impide de verdad que se solapen es el
+  // `concurrency: sync` del workflow; esto solo evita encolar por error.
+  const [ultima] = await getSyncRuns(1)
+
+  if (ultima?.state === 'running') {
+    return errorState('Ya hay una sincronización en marcha')
+  }
+
+  if (ultima && Date.now() - new Date(ultima.started_at).getTime() < 60_000) {
+    return errorState('Espera un minuto entre sincronizaciones')
+  }
+
+  try {
+    await dispararSync(parsed.data.job, admin.id)
+  } catch (error) {
+    return errorState(error instanceof Error ? error.message : 'No se pudo lanzar')
+  }
+
+  revalidatePath('/admin/sync')
+  revalidatePath('/admin')
+
+  return successState(
+    `Lanzado «${parsed.data.job}». Tarda unos segundos en aparecer abajo.`,
   )
 }
 

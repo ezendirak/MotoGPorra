@@ -1,21 +1,23 @@
 import type { Metadata } from 'next'
 
+import { SyncTrigger } from '@/components/admin/sync-trigger'
 import { getSyncRuns, type SyncRun } from '@/services/admin.service'
+import { puedeDispararSync } from '@/services/sync.service'
 import { formatRaceDate } from '@/utils/date'
 
 export const metadata: Metadata = { title: 'Sincronización' }
 
 /**
- * Historial de ejecuciones del sincronizador.
+ * Disparo manual e historial del sincronizador.
  *
- * Es de solo lectura: el disparo manual necesita un token de GitHub con
- * permiso `actions: write` que todavía no está configurado. Hasta entonces,
- * los jobs se lanzan desde la pestaña Actions del repositorio y esta pantalla
- * sirve para ver qué pasó — que es lo que de verdad se consulta cuando una
- * carrera no aparece puntuada.
+ * El disparo es asíncrono por diseño (§3.2): lanza el `workflow_dispatch` y
+ * devuelve el control. Esperar al sincronizador desde una función serverless
+ * daría timeout con un `backfill`, así que el progreso se observa en
+ * `sync_runs` — que es la razón de que esa tabla exista.
  */
 export default async function AdminSyncPage() {
   const runs = await getSyncRuns(30)
+  const configurado = puedeDispararSync()
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-5 pt-8">
@@ -25,6 +27,16 @@ export default async function AdminSyncPage() {
           Últimas {runs.length} ejecuciones registradas en <code>sync_runs</code>.
         </p>
       </header>
+
+      {configurado ? (
+        <SyncTrigger />
+      ) : (
+        <p className="rounded-xl border border-zinc-700 bg-zinc-900/60 px-4 py-3 text-xs text-zinc-400">
+          Faltan <code>GITHUB_SYNC_TOKEN</code> y <code>GITHUB_SYNC_REPO</code> en el
+          entorno, así que no se puede lanzar desde aquí. Mientras tanto, los trabajos se
+          disparan desde la pestaña Actions del repositorio.
+        </p>
+      )}
 
       {runs.length === 0 ? (
         <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-400">

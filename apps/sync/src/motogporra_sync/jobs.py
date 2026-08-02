@@ -23,9 +23,20 @@ from .db import SupabaseClient
 logger = logging.getLogger(__name__)
 
 
-def _start_run(db: SupabaseClient, job: str, season_id: str) -> str:
+def _start_run(
+    db: SupabaseClient, job: str, season_id: str, triggered_by: str | None = None
+) -> str:
     rows = db.insert(
-        "sync_runs", [{"job": job, "state": "running", "season_id": season_id}]
+        "sync_runs",
+        [
+            {
+                "job": job,
+                "state": "running",
+                "season_id": season_id,
+                # `None` es lo que marca una ejecución automática (§4.11).
+                "triggered_by": triggered_by,
+            }
+        ],
     )
     return rows[0]["id"]
 
@@ -61,7 +72,7 @@ def sync_riders(
     """
     season = db.get_active_season()
     category_id = db.get_category_id(config.category)
-    run_id = _start_run(db, "riders", season["id"])
+    run_id = _start_run(db, "riders", season["id"], config.triggered_by)
 
     try:
         riders = client.get_riders(category=config.category)
@@ -242,7 +253,9 @@ def sync_results(
     peticiones, no las ~176 que costaría resolver evento y sesión cada vez.
     """
     season = db.get_active_season()
-    run_id = _start_run(db, "backfill" if backfill else "results", season["id"])
+    run_id = _start_run(
+        db, "backfill" if backfill else "results", season["id"], config.triggered_by
+    )
 
     try:
         # Índices de reconciliación. Se cargan una vez y se reutilizan.
@@ -346,7 +359,7 @@ def sync_calendar(
     """
     season = db.get_active_season()
     category_id = db.get_category_id(config.category)
-    run_id = _start_run(db, "calendar", season["id"])
+    run_id = _start_run(db, "calendar", season["id"], config.triggered_by)
 
     try:
         eventos = client.get_calendar_current()

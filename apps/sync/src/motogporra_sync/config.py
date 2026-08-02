@@ -42,6 +42,15 @@ class SyncConfig:
 
     request_timeout: int = 30
 
+    triggered_by: str | None = None
+    """UUID del administrador que lanzó esta ejecución desde el panel.
+
+    `None` cuando la lanza el cron, que es lo que distingue una ejecución
+    automática de una manual en `sync_runs`. Llega como entrada del
+    `workflow_dispatch`; una cadena vacía se trata como ausencia, porque la FK
+    contra `auth.users` rechazaría cualquier cosa que no sea un UUID válido.
+    """
+
     @property
     def rest_url(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/rest/v1"
@@ -70,4 +79,8 @@ class SyncConfig:
                 "Faltan variables de entorno: " + ", ".join(missing)
             )
 
-        return cls(supabase_url=url, service_role_key=key)
+        return cls(
+            supabase_url=url,
+            service_role_key=key,
+            triggered_by=os.environ.get("MOTOGPORRA_TRIGGERED_BY", "").strip() or None,
+        )
