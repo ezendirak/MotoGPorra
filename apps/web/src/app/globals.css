@@ -1,26 +1,33 @@
 @import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Paleta MotoGP: grafito oscuro con el rojo como único acento.
+ * La aplicación es siempre oscura — es lo que mejor encaja con la estética
+ * del campeonato y lo más cómodo para consultar el móvil en un sofá un
+ * domingo por la tarde.
+ */
+@theme {
+  --color-brand-50: #fef2f2;
+  --color-brand-500: #ef4444;
+  --color-brand-600: #dc2626;
+  --color-brand-700: #b91c1c;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+  /* Evita el zoom automático de iOS al enfocar un input. */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-zinc-950);
+  color: var(--color-zinc-100);
+}
+
+/* Sin resaltado azul al tocar en móvil. */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
