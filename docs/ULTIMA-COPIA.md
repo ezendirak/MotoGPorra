@@ -1,3 +1,3 @@
-Última copia de seguridad: todavía ninguna
+Última copia de seguridad: 2026-08-03 01:43 UTC
 
 La genera .github/workflows/backup.yml y se guarda como artefacto de esa ejecución, nunca en el repositorio: contiene datos de los participantes y esto es público.
