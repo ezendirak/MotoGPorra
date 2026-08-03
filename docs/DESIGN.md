@@ -66,6 +66,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 13 | **El panel no borra usuarios** | Se hace desde Supabase. Borrar una cuenta arrastra por cascada sus apuestas y puntuaciones, así que **cambia la clasificación de carreras ya disputadas** — justo lo que §10.3 evita al no dar `DELETE` sobre `bets`. Que cueste un poco más es la protección, no un descuido |
 | 14 | **Realtime solo publica `race_scores`** | Es la única tabla que cambia sin que el usuario haga nada. `bets` no se publica aunque la RLS proteja su contenido: el evento en sí ya delata que alguien acaba de apostar. `races` tampoco, porque su estado se deriva y no genera `UPDATE` |
 | 15 | **El UUID del administrador viaja como entrada del `workflow_dispatch`** | Es lo que rellena `sync_runs.triggered_by` y distingue una ejecución manual de una del cron. Una cadena vacía se convierte en `None` en el job: la FK contra `auth.users` rechaza lo que no sea un UUID, y lanzarlo desde la pestaña Actions deja el campo en blanco |
+| 16 | **Las horas se muestran siempre en `Europe/Madrid`**, no en la del dispositivo | Ver §14. Es determinista —servidor y cliente pintan lo mismo— y evita que el formateo dependa de dónde corra el proceso. Quien mire desde otro huso verá la hora de España, que para una porra entre amigos de aquí es lo que se espera |
 
 #### Sobre la decisión 12: por qué el registro es la excepción
 
@@ -1422,6 +1423,20 @@ Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Ant
 **Resuelto** con SMTP de Gmail y contraseña de aplicación: `smtp.gmail.com:587`, sin dominio y sin coste. Tras activarlo, Supabase sube el tope a 30 correos/hora, ajustable.
 
 > Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
+
+### Hallazgo de la Fase 10: todas las horas salían en UTC
+
+Lanzando una sincronización a las 02:00 de la madrugada, el panel la fechó dos horas antes. El diagnóstico llevó a algo bastante peor que un historial mal fechado.
+
+`utils/date.ts` declaraba que las fechas «se muestran en la zona horaria del navegador». **No era cierto:** esas funciones se llaman casi siempre desde Server Components, donde no hay navegador, y `Intl` cae entonces en la zona del proceso. En Vercel eso es UTC. En el portátil de desarrollo, `Europe/Madrid` — por eso coincidía en local y nunca se vio.
+
+No afectaba solo a la auditoría: la home anunciaba **la hora de la carrera dos horas antes de la real**, que es justo el dato por el que alguien pone la tele.
+
+**Lo que sí estaba bien, y por qué.** El cierre de apuestas no se vio afectado en ningún momento, y no por suerte: nunca compara textos de hora, sino **instantes**. `closes_at` en UTC, `now()` de Postgres en UTC, y la cuenta atrás restando dos marcas de tiempo. Verificado: `timeUntilPrecise` devuelve lo mismo ejecutándose en UTC que en Madrid, mientras que `formatRaceDate` devolvía `00:00` y `02:00`.
+
+**Corregido** fijando `timeZone: 'Europe/Madrid'` en los tres formateadores (decisión 16). Comprobado que el resultado es idéntico con el proceso en UTC, en Madrid y en Nueva York, y que el salto CEST/CET lo resuelve el identificador IANA.
+
+> Lección general: **una función de formato no es pura respecto al entorno.** `Intl` y `new Date()` leen la zona del proceso, así que el mismo código da resultados distintos en tu máquina y en el servidor. En cuanto una fecha se formatee en servidor, la zona hay que fijarla.
 
 ### Hallazgo de la Fase 10: el proxy se comía el `robots.txt`
 

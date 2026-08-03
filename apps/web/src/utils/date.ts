@@ -1,16 +1,30 @@
 /**
  * Formato de fechas. Funciones puras, sin dependencias del proyecto.
  *
- * Todas las fechas llegan de la base en UTC y se muestran en la zona horaria
- * del navegador: el usuario quiere saber a qué hora empieza la carrera *para
- * él*, no en Tailandia.
+ * Las fechas llegan de la base en UTC y se muestran **siempre en hora
+ * peninsular**, no en la del dispositivo.
+ *
+ * ⚠️ El motivo es que esto se ejecuta casi siempre en Server Components, donde
+ * no hay navegador: `Intl` usa entonces la zona del proceso, que en Vercel es
+ * UTC y en un portátil español es `Europe/Madrid`. Sin fijarla, la misma
+ * carrera se anunciaba dos horas antes en producción que en desarrollo —y la
+ * hora de la carrera es justo el dato por el que alguien pone la tele.
+ *
+ * Fijarla también la hace determinista: servidor y cliente pintan lo mismo, así
+ * que no hay nada que hidratar mal. La contrapartida asumida es que quien mire
+ * desde otro huso verá la hora de España; para una porra entre amigos de aquí
+ * es incluso lo que se espera («la carrera es a las dos»).
  */
 
 const LOCALE = 'es-ES'
 
+/** El identificador IANA se encarga solo del salto CEST/CET. */
+const ZONA = 'Europe/Madrid'
+
 export function formatRaceDate(iso: string | null): string {
   if (!iso) return 'Por confirmar'
   return new Intl.DateTimeFormat(LOCALE, {
+    timeZone: ZONA,
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -22,6 +36,7 @@ export function formatRaceDate(iso: string | null): string {
 export function formatShortDate(iso: string | null): string {
   if (!iso) return '—'
   return new Intl.DateTimeFormat(LOCALE, {
+    timeZone: ZONA,
     day: 'numeric',
     month: 'short',
   }).format(new Date(iso))
@@ -30,6 +45,7 @@ export function formatShortDate(iso: string | null): string {
 export function formatTime(iso: string | null): string {
   if (!iso) return '—'
   return new Intl.DateTimeFormat(LOCALE, {
+    timeZone: ZONA,
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso))
