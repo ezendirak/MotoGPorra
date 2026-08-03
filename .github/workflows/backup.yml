@@ -70,20 +70,55 @@ jobs:
 
           echo "--- conexión TCP ---"
           if timeout 10 bash -c "cat < /dev/null > /dev/tcp/$host/$puerto" 2>/dev/null; then
-            echo "OK: el puerto responde"
+            tcp="responde"
           else
-            echo "::warning::no se pudo abrir $host:$puerto"
+            tcp="NO responde"
           fi
+          echo "$tcp"
 
+          # Resumen como anotación: las anotaciones son públicas y consultables
+          # por la API, a diferencia de los logs. Ni usuario ni contraseña.
+          echo "::warning::diagnostico :: host=$host puerto=$puerto :: A=[$(dig +short A "$host" | tr '\n' ' ')] AAAA=[$(dig +short AAAA "$host" | tr '\n' ' ')] :: ipv6_runner=$(ip -6 addr show scope global 2>/dev/null | grep -c inet6) :: tcp=$tcp"
+
+      # `db dump` falla con un `exit 1` mudo si solo se le deja correr: el
+      # detalle se queda en los logs, que exigen autenticación para leerse. Se
+      # captura y se emite como ANOTACIÓN, que sí es pública y consultable.
+      #
+      # ⚠️ Antes de emitirla se borra la contraseña. El mensaje de error de
+      # `pg_dump` suele incluir la cadena de conexión entera, y esto es un
+      # repositorio público.
       - name: Volcar esquema
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f esquema.sql
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set +e
+          salida=$(supabase db dump --db-url "$SUPABASE_DB_URL" -f esquema.sql 2>&1)
+          codigo=$?
+          set -e
+          [ $codigo -eq 0 ] && exit 0
+
+          limpio=$(printf '%s' "$salida" \
+            | sed -E 's#(postgres(ql)?://[^:@]+):[^@]*@#\1:CONTRASENA-OCULTA@#g' \
+            | head -c 1200)
+          # Las anotaciones son de una sola línea: los saltos van como %0A.
+          echo "::error::db dump (codigo $codigo) :: ${limpio//$'\n'/%0A}"
+          exit 1
 
       - name: Volcar datos
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" --data-only -f datos.sql
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set +e
+          salida=$(supabase db dump --db-url "$SUPABASE_DB_URL" --data-only -f datos.sql 2>&1)
+          codigo=$?
+          set -e
+          [ $codigo -eq 0 ] && exit 0
+
+          limpio=$(printf '%s' "$salida" \
+            | sed -E 's#(postgres(ql)?://[^:@]+):[^@]*@#\1:CONTRASENA-OCULTA@#g' \
+            | head -c 1200)
+          echo "::error::db dump --data-only (codigo $codigo) :: ${limpio//$'\n'/%0A}"
+          exit 1
 
       # Un volcado vacío es peor que ninguno: aparenta que hay copia. Si el
       # comando falla a medias o la base está pausada, esto lo detiene aquí.
