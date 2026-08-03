@@ -38,9 +38,43 @@ jobs:
         with:
           version: latest
 
-      # El host directo de Postgres solo publica registro AAAA. Desde una red
-      # sin IPv6 es inalcanzable —por eso `apps/sync` va por PostgREST— pero
-      # los runners de GitHub sí tienen ruta, así que aquí `db dump` sí sirve.
+      # El host directo de Postgres de Supabase solo publica registro AAAA, así
+      # que solo se alcanza por IPv6. Este paso dice si el runner llega o no,
+      # sin imprimir jamás la contraseña.
+      - name: Diagnosticar la conexión
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::El secreto SUPABASE_DB_URL no está definido en el repositorio"
+            exit 1
+          fi
+
+          # Se extraen host y puerto sin tocar usuario ni contraseña.
+          sin_esquema="${SUPABASE_DB_URL#*://}"
+          hostport="${sin_esquema#*@}"
+          host="${hostport%%:*}"
+          host="${host%%/*}"
+          puerto="${hostport##*:}"
+          puerto="${puerto%%/*}"
+
+          echo "host: $host"
+          echo "puerto: $puerto"
+
+          echo "--- registros DNS ---"
+          echo "A    (IPv4): $(dig +short A "$host" | tr '\n' ' ')"
+          echo "AAAA (IPv6): $(dig +short AAAA "$host" | tr '\n' ' ')"
+
+          echo "--- ¿tiene el runner salida IPv6? ---"
+          ip -6 addr show scope global | grep -c inet6 || echo "sin direcciones IPv6 globales"
+
+          echo "--- conexión TCP ---"
+          if timeout 10 bash -c "cat < /dev/null > /dev/tcp/$host/$puerto" 2>/dev/null; then
+            echo "OK: el puerto responde"
+          else
+            echo "::warning::no se pudo abrir $host:$puerto"
+          fi
+
       - name: Volcar esquema
         run: supabase db dump --db-url "$SUPABASE_DB_URL" -f esquema.sql
         env:
