@@ -14,6 +14,14 @@
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    /*
+     * Los ficheros `*.test.ts` los ejecuta Node directamente quitando los
+     * tipos, y para eso exige la extensión explícita en el import
+     * (`./date.ts`). TypeScript la rechaza salvo con este flag, que a su vez
+     * requiere `noEmit` — que ya está arriba. No afecta al build: Next compila
+     * con SWC y estos ficheros no entran en ningún bundle.
+     */
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

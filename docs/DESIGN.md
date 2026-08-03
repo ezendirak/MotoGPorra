@@ -13,7 +13,7 @@
 | Fase | Estado | Comprobado con |
 |---|---|---|
 | 0 — Fundación | ✅ | CI en verde |
-| 1 — Base de datos | ✅ | `npm run db:verify` → 25/25 |
+| 1 — Base de datos | ✅ | `npm run db:verify` → 34/34 |
 | 2 — Autenticación | ✅ | registro y login reales |
 | 3 — Shell y calendario | ✅ | build + rutas protegidas |
 | 4 — Apuestas | ✅ | apuesta real creada y puntuada |
@@ -32,7 +32,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 **Solo queda la fase 10**, y son tres cosas independientes entre sí:
 
 1. **Monitorización.** Hoy un fallo en producción solo deja el `digest` de `error.tsx` y los logs de Vercel: sirve para depurar cuando alguien avisa, no para enterarse.
-2. **Tests E2E del flujo crítico**: alta → apuesta → resultado → clasificación.
+2. **Tests E2E de navegador**, si alguna vez se quieren. Hoy la lógica está cubierta a dos niveles —`npm test` para las funciones puras y `npm run db:verify` para RLS, SQL y progresión de la clasificación—, así que lo único que queda sin probar automáticamente es el JSX y la hidratación. Playwright cubriría eso a cambio de ~200 MB de navegadores, un usuario de prueba dedicado y triplicar el tiempo de CI.
 3. **Backups.** Supabase hace copia diaria con 7 días de retención en el plan gratuito. Conviene decidir si basta antes de que empiece la temporada de verdad.
 
 > Las **ejecuciones vacías del cron** son el mayor consumidor de minutos de Actions: `*/30 12-21 * * 6,0` corre 40 veces cada fin de semana del año, y solo 44 días tienen carrera — el 80% no hace nada. Es gratis mientras el repositorio sea público; si pasara a privado (2.000 min/mes), el arreglo es salir del job al principio cuando no haya sesión programada cerca.

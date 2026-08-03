@@ -297,12 +297,136 @@ try {
     scores2?.length === 2 && scores2.find((s) => s.user_id === userA.id).points === 3,
     'recalcular es idempotente',
   )
+
+  // ---------------------------------------------------------------------
+  // Hasta aquí, una sola carrera. Lo que de verdad usa la porra es la
+  // ACUMULACIÓN a lo largo de la temporada, y una clasificación mal sumada no
+  // da ningún error: simplemente miente hasta que alguien discute su puesto.
+  console.log('\n[7] Progresión de la clasificación')
+
+  const emailC = `fase1-c-${stamp}@motogporra-test.com`
+  const userC = await createUser(emailC)
+  const tokC = await signIn(emailC)
+
+  /** Crea una carrera ya cerrada, con apuestas y podio, y la puntúa. */
+  async function disputar({ eventId, kind, podio, apuestas }) {
+    const pasado = new Date(Date.now() - 864e5).toISOString()
+    const carrera = await insert('races', {
+      season_id: season.id,
+      event_id: eventId,
+      category_id: catId,
+      kind,
+      scheduled_at: pasado,
+      // Abierta al insertar las apuestas y cerrada después: se logra dejando
+      // el cierre en el pasado y escribiendo los picks con service_role, que
+      // bypasa la RLS. La ventana temporal ya se comprueba en [4] y [5].
+      betting_closes_at: pasado,
+    })
+
+    for (const [userId, picks] of Object.entries(apuestas)) {
+      const bet = await insert('bets', { race_id: carrera.id, user_id: userId })
+      await rest('bet_picks', {
+        method: 'POST',
+        body: picks.map((riderId, i) => ({
+          bet_id: bet.id,
+          position: i + 1,
+          rider_id: riderId,
+        })),
+        prefer: 'return=minimal',
+      })
+    }
+
+    const res = await insert('race_results', { race_id: carrera.id, status: 'official' })
+    for (let i = 0; i < podio.length; i++) {
+      await insert('race_result_entries', {
+        race_result_id: res.id,
+        rider_id: podio[i],
+        position: i + 1,
+        is_classified: true,
+        status_raw: 'INSTND',
+      })
+    }
+
+    await rpc('recalculate_race_scores', { p_race_id: carrera.id })
+    return carrera
+  }
+
+  const puntosDe = async (userId) => {
+    const filas = (await rest(`season_standings?select=total_points,position&season_id=eq.${season.id}&user_id=eq.${userId}`, { headers: asUser(tokC) })).json
+    return filas?.[0] ?? { total_points: 0, position: null }
+  }
+
+  // El sprint del MISMO GP en el que A ya sumó 3 puntos (decisiones 2 y 8).
+  // A acierta el podio entero otra vez; C acierta solo el 1º; B no apuesta.
+  await disputar({
+    eventId: event.id,
+    kind: 'sprint',
+    podio: [r1, r2, r3],
+    apuestas: { [userA.id]: [r1, r2, r3], [userC.id]: [r1, r3, r2] },
+  })
+
+  const trasSprint = await puntosDe(userA.id)
+  check(
+    trasSprint.total_points === 6,
+    `sprint y carrera suman por separado: A lleva 6 (lleva ${trasSprint.total_points})`,
+  )
+  check(trasSprint.total_points <= 6, 'un GP reparte como máximo 6 puntos')
+
+  const cTrasSprint = await puntosDe(userC.id)
+  check(cTrasSprint.total_points === 1, `C acertó solo el 1º: 1 punto (tiene ${cTrasSprint.total_points})`)
+
+  // B y C empatan a 1: deben COMPARTIR el 2º puesto (decisión 4).
+  const conEmpate = (await rest(`season_standings?select=user_id,total_points,position&season_id=eq.${season.id}&order=position`, { headers: asUser(tokC) })).json
+  const posB = conEmpate?.find((f) => f.user_id === userB.id)
+  const posC = conEmpate?.find((f) => f.user_id === userC.id)
+  check(
+    posB?.total_points === 1 && posC?.total_points === 1,
+    'B y C empatan a 1 punto',
+  )
+  check(
+    posB?.position === 2 && posC?.position === 2,
+    `los empatados comparten el 2º puesto (B: ${posB?.position}, C: ${posC?.position})`,
+  )
+
+  // Segundo GP: C acierta el podio entero y adelanta a B, que no apuesta.
+  const evento2 = await insert('events', {
+    season_id: season.id,
+    circuit_id: circuit.id,
+    motogp_event_id: `test-event2-${stamp}`,
+    name: 'GP de Prueba 2',
+    round: 98,
+    country_code: 'ES',
+  })
+  created.events.push(evento2.id)
+
+  await disputar({
+    eventId: evento2.id,
+    kind: 'race',
+    podio: [r1, r2, r3],
+    apuestas: { [userC.id]: [r1, r2, r3] },
+  })
+
+  const finalC = await puntosDe(userC.id)
+  const finalB = await puntosDe(userB.id)
+  check(finalC.total_points === 4, `C acumula entre GP distintos: 4 puntos (tiene ${finalC.total_points})`)
+  check(
+    finalC.position === 2 && finalB.position === 3,
+    `C adelanta a B: 2º y 3º (C ${finalC.position}, B ${finalB.position})`,
+  )
+
+  // Deshecho el empate, el puesto siguiente ya no salta.
+  const finalA = await puntosDe(userA.id)
+  check(finalA.position === 1, `A sigue líder con 6 (${finalA.total_points}, ${finalA.position}º)`)
+
+  // races_played cuenta carreras puntuadas, no Grandes Premios.
+  const jugadas = (await rest(`season_standings?select=races_played&season_id=eq.${season.id}&user_id=eq.${userA.id}`, { headers: asUser(tokC) })).json
+  check(jugadas?.[0]?.races_played === 2, `A ha puntuado en 2 carreras (${jugadas?.[0]?.races_played})`)
 } catch (err) {
   fail++
   console.log(`\n  EXCEPCIÓN: ${err.message}`)
 } finally {
   // -----------------------------------------------------------------------
-  console.log('\n[7] Limpieza')
+  console.log('\n[8] Limpieza')
   for (const id of created.events) await rest(`events?id=eq.${id}`, { method: 'DELETE' })
   for (const id of created.circuits) await rest(`circuits?id=eq.${id}`, { method: 'DELETE' })
   for (const id of created.riders) await rest(`riders?id=eq.${id}`, { method: 'DELETE' })

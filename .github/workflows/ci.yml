@@ -38,6 +38,14 @@ jobs:
       - name: Tipos
         run: npm run typecheck
 
+      - name: Pruebas de lógica pura
+        # En UTC a propósito: es la zona del servidor de producción, y así las
+        # pruebas de formato de fecha comprueban de verdad que la hora mostrada
+        # no depende de dónde corra el proceso.
+        run: npm test
+        env:
+          TZ: UTC
+
       - name: Build
         run: npm run build
         env:

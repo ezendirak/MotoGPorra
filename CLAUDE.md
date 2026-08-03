@@ -47,10 +47,11 @@ docs/DESIGN.md            Diseño y diario del proyecto
 
 ```bash
 npm run dev          # servidor de desarrollo
-npm run check        # formato + lint + tipos  (pasar SIEMPRE antes de commitear)
+npm run check        # formato + lint + tipos + tests  (pasar SIEMPRE antes de commitear)
+npm test             # lógica pura con el runner de Node, sin dependencias
 npm run build
 npm run db:push      # aplicar migraciones nuevas al proyecto enlazado
-npm run db:verify    # 25 pruebas de esquema y RLS contra la base real
+npm run db:verify    # 34 pruebas de esquema, RLS y clasificación contra la base real
 npx supabase gen types typescript --linked > apps/web/src/types/database.types.ts
 
 npm run icons --workspace=web   # regenera los PNG de la PWA desde el SVG del script
@@ -71,6 +72,7 @@ Estas tres las **verifica ESLint**, no la disciplina:
 
 Además:
 
+- **Dónde va cada prueba.** Lógica pura → `*.test.ts` junto al fichero, con el runner de Node (`npm test`). Todo lo que dependa de RLS, funciones SQL o triggers → `supabase/tests/verify.mjs`, contra el proyecto real: una política solo es creíble ejecutándose.
 - **Los componentes no consultan la base de datos.** Solo `services/*` construyen queries.
 - **Server Components por defecto.** Client Component solo cuando aporta: formularios, cuenta atrás, hojas inferiores.
 - **Tipos generados, nunca escritos a mano.** `database.types.ts` sale del CLI.

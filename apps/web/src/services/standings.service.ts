@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database.types'
+import { posicionesPorPuntos, puestosGanados } from '@/utils/ranking'
 
 export type Standing = Database['public']['Views']['season_standings']['Row']
 
@@ -42,30 +43,16 @@ export interface StandingWithTrend extends Standing {
 }
 
 /**
- * Replica el `rank()` de `season_standings`: los empates comparten posición y
- * la siguiente salta (1, 2, 2, 4).
- *
- * Se calcula aquí y no en SQL porque la posición *anterior* exige recalcular la
- * clasificación excluyendo la última carrera, y expresar eso como vista obliga
- * a una función con ventana sobre un agregado condicional. Con ~20 usuarios y
- * ~44 carreras son 880 filas: en JS es inmediato y se lee.
- */
-function posicionar(puntosPorUsuario: Map<string, number>): Map<string, number> {
-  const puntos = [...puntosPorUsuario.values()]
-
-  return new Map(
-    [...puntosPorUsuario].map(([userId, propios]) => [
-      userId,
-      1 + puntos.filter((p) => p > propios).length,
-    ]),
-  )
-}
-
-/**
  * Clasificación con la variación de puesto respecto a la carrera anterior.
  *
  * "Anterior" es la última carrera con resultado, no la última del calendario:
  * comparar contra un Gran Premio que aún no se ha corrido daría cero siempre.
+ *
+ * El cálculo de puestos vive en `utils/ranking`, que es puro y está cubierto por
+ * pruebas. Aquí queda solo el acarreo de datos. Se hace en JS y no en SQL porque
+ * la posición *anterior* exige rehacer la clasificación excluyendo la última
+ * carrera, y expresarlo como vista obliga a una ventana sobre un agregado
+ * condicional; con ~20 usuarios y ~44 carreras son 880 filas.
  */
 export async function getStandingsWithTrend(): Promise<StandingWithTrend[]> {
   const supabase = await createClient()
@@ -102,17 +89,15 @@ export async function getStandingsWithTrend(): Promise<StandingWithTrend[]> {
     previos.set(p.user_id, (previos.get(p.user_id) ?? 0) + p.points)
   }
 
-  const posicionesPrevias = posicionar(previos)
+  const posicionesPrevias = posicionesPorPuntos(previos)
 
-  return actual.map((fila) => {
-    const antes = fila.user_id ? posicionesPrevias.get(fila.user_id) : undefined
-
-    return {
-      ...fila,
-      // Restar al revés: subir del 5º al 3º son +2 puestos ganados.
-      delta: antes === undefined || fila.position === null ? null : antes - fila.position,
-    }
-  })
+  return actual.map((fila) => ({
+    ...fila,
+    delta: puestosGanados(
+      fila.user_id ? posicionesPrevias.get(fila.user_id) : undefined,
+      fila.position,
+    ),
+  }))
 }
 
 export type HistoryRow = {

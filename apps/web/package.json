@@ -9,6 +9,7 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "typecheck": "next typegen && tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\"",
     "icons": "node scripts/generate-icons.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
