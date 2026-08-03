@@ -97,9 +97,16 @@ jobs:
           set -e
           [ $codigo -eq 0 ] && exit 0
 
+          # `db dump` se baja una imagen Docker de Postgres para ejecutar
+          # pg_dump dentro, y el progreso de la descarga son decenas de líneas.
+          # Se filtran y se conserva el FINAL del mensaje: el error va ahí, no
+          # al principio.
           limpio=$(printf '%s' "$salida" \
+            | grep -vE '^[0-9a-f]{8,}: (Pulling|Waiting|Downloading|Extracting|Verifying|Download complete|Pull complete)' \
+            | grep -vE '^[0-9][0-9.]*: Pulling from' \
+            | grep -vE '^Digest: |^Status: ' \
             | sed -E 's#(postgres(ql)?://[^:@]+):[^@]*@#\1:CONTRASENA-OCULTA@#g' \
-            | head -c 1200)
+            | tail -c 1500)
           # Las anotaciones son de una sola línea: los saltos van como %0A.
           echo "::error::db dump (codigo $codigo) :: ${limpio//$'\n'/%0A}"
           exit 1
@@ -114,9 +121,16 @@ jobs:
           set -e
           [ $codigo -eq 0 ] && exit 0
 
+          # `db dump` se baja una imagen Docker de Postgres para ejecutar
+          # pg_dump dentro, y el progreso de la descarga son decenas de líneas.
+          # Se filtran y se conserva el FINAL del mensaje: el error va ahí, no
+          # al principio.
           limpio=$(printf '%s' "$salida" \
+            | grep -vE '^[0-9a-f]{8,}: (Pulling|Waiting|Downloading|Extracting|Verifying|Download complete|Pull complete)' \
+            | grep -vE '^[0-9][0-9.]*: Pulling from' \
+            | grep -vE '^Digest: |^Status: ' \
             | sed -E 's#(postgres(ql)?://[^:@]+):[^@]*@#\1:CONTRASENA-OCULTA@#g' \
-            | head -c 1200)
+            | tail -c 1500)
           echo "::error::db dump --data-only (codigo $codigo) :: ${limpio//$'\n'/%0A}"
           exit 1
 
