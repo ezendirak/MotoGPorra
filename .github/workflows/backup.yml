@@ -1,0 +1,93 @@
+name: Copia de seguridad
+
+# El plan gratuito de Supabase NO hace copias automáticas: solo las tienen Pro,
+# Team y Enterprise. Sin este workflow no habría ningún punto de restauración.
+#
+# Hace además dos cosas que no son el backup y que importan tanto como él:
+#
+#  1. Toca la base todas las semanas. Supabase pausa los proyectos gratuitos
+#     con poca actividad en 7 días, y en el parón invernal nadie entra.
+#  2. Deja actividad en el repositorio. Los `schedule` de Actions se desactivan
+#     tras 60 días sin actividad, y la temporada de MotoGP para más de eso.
+#     ⚠️ GitHub no documenta si un commit del bot cuenta como actividad. Si no
+#     contara, el aviso del paso final es lo que lo delata.
+
+on:
+  schedule:
+    # Lunes 05:00 UTC, una hora después del sync semanal: así la copia recoge
+    # el calendario y los pilotos ya actualizados.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  copia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Para el commit del marcador. Nada más.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # El host directo de Postgres solo publica registro AAAA. Desde una red
+      # sin IPv6 es inalcanzable —por eso `apps/sync` va por PostgREST— pero
+      # los runners de GitHub sí tienen ruta, así que aquí `db dump` sí sirve.
+      - name: Volcar esquema
+        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f esquema.sql
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: Volcar datos
+        run: supabase db dump --db-url "$SUPABASE_DB_URL" --data-only -f datos.sql
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      # Un volcado vacío es peor que ninguno: aparenta que hay copia. Si el
+      # comando falla a medias o la base está pausada, esto lo detiene aquí.
+      - name: Comprobar que la copia no está vacía
+        run: |
+          for f in esquema.sql datos.sql; do
+            tamano=$(stat -c%s "$f")
+            echo "$f: $tamano bytes"
+            if [ "$tamano" -lt 1000 ]; then
+              echo "::error::$f tiene $tamano bytes: la copia no es válida"
+              exit 1
+            fi
+          done
+          grep -q "create table" esquema.sql || {
+            echo "::error::el esquema no contiene ninguna tabla"; exit 1; }
+
+      # ⚠️ Como ARTEFACTO y nunca commiteado: el repositorio es público y el
+      # volcado contiene los datos de los participantes.
+      - name: Guardar la copia
+        uses: actions/upload-artifact@v4
+        with:
+          name: copia-${{ github.run_id }}
+          path: |
+            esquema.sql
+            datos.sql
+          retention-days: 90
+
+      # El marcador es lo único que se commitea: una fecha, sin datos. Su
+      # función es dejar rastro de actividad en el repositorio.
+      - name: Anotar la fecha de la última copia
+        run: |
+          fecha=$(date -u '+%Y-%m-%d %H:%M UTC')
+          printf 'Última copia de seguridad: %s\n\nLa genera .github/workflows/backup.yml y se guarda como artefacto de esa ejecución, nunca en el repositorio: contiene datos de los participantes y esto es público.\n' "$fecha" > docs/ULTIMA-COPIA.md
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/ULTIMA-COPIA.md
+          # Sin cambios no hay commit: `git commit` fallaría y tumbaría el job.
+          git diff --staged --quiet || git commit -m "Copia de seguridad del $fecha"
+          # Destino explícito: `checkout` puede dejar el HEAD desacoplado y
+          # entonces un `git push` a secas falla por no estar en una rama.
+          git push origin HEAD:main

@@ -33,7 +33,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 
 1. **Monitorización.** Hoy un fallo en producción solo deja el `digest` de `error.tsx` y los logs de Vercel: sirve para depurar cuando alguien avisa, no para enterarse.
 2. **Tests E2E de navegador**, si alguna vez se quieren. Hoy la lógica está cubierta a dos niveles —`npm test` para las funciones puras y `npm run db:verify` para RLS, SQL y progresión de la clasificación—, así que lo único que queda sin probar automáticamente es el JSX y la hidratación. Playwright cubriría eso a cambio de ~200 MB de navegadores, un usuario de prueba dedicado y triplicar el tiempo de CI.
-3. **Backups.** Supabase hace copia diaria con 7 días de retención en el plan gratuito. Conviene decidir si basta antes de que empiece la temporada de verdad.
+3. **Verificar la primera copia de seguridad.** Lanzar `backup.yml` a mano y comprobar que el artefacto contiene lo que hace falta para restaurar — en particular, si el volcado incluye `auth.users`: sin esos usuarios, los `profiles` quedarían apuntando a cuentas inexistentes.
 
 > Las **ejecuciones vacías del cron** son el mayor consumidor de minutos de Actions: `*/30 12-21 * * 6,0` corre 40 veces cada fin de semana del año, y solo 44 días tienen carrera — el 80% no hace nada. Es gratis mientras el repositorio sea público; si pasara a privado (2.000 min/mes), el arreglo es salir del job al principio cuando no haya sesión programada cerca.
 
@@ -1423,6 +1423,25 @@ Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Ant
 **Resuelto** con SMTP de Gmail y contraseña de aplicación: `smtp.gmail.com:587`, sin dominio y sin coste. Tras activarlo, Supabase sube el tope a 30 correos/hora, ajustable.
 
 > Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
+
+### Hallazgo de la Fase 10: el plan gratuito no hace copias, y el proyecto se pausa solo
+
+Este documento daba por hecho que Supabase hacía «copia diaria con 7 días de retención» en el plan gratuito. **Es del plan Pro.** El gratuito no tiene copias automáticas de ninguna clase: la documentación dice *«We automatically back up all Pro, Team, and Enterprise Plan projects»* y recomienda al resto exportar a mano. Es decir, no había ningún punto de restauración.
+
+Tirando del hilo aparecieron dos temporizadores que, encadenados, dejan la porra muerta sin que nadie toque nada:
+
+| Plazo | Qué pasa |
+|---|---|
+| 7 días de poca actividad | Supabase **pausa** el proyecto gratuito |
+| 60 días sin actividad en el repositorio | GitHub **desactiva** los `schedule` |
+
+Por separado son inocuos: el cron semanal escribe en `sync_runs` cada lunes pase lo que pase, así que Supabase ve actividad. Pero **el parón invernal de MotoGP dura más de 60 días**. Encadenado: en enero GitHub desactiva el cron → una semana después Supabase pausa el proyecto → en marzo empieza la temporada y no hay porra.
+
+Para una aplicación **anual**, ese es el camino por defecto si nadie hace nada.
+
+**Resuelto** con `backup.yml` semanal, que vuelca la base a un artefacto —nunca al repositorio, que es público y el volcado lleva datos de los participantes—, toca Supabase de paso y commitea un marcador con la fecha para dejar actividad. GitHub **no documenta** si un commit de bot cuenta como actividad del repositorio; si no contara, la ausencia del marcador semanal es la señal.
+
+> Lección general: **una aplicación estacional envejece de formas que una diaria no.** Los plazos de inactividad de los servicios gratuitos se miden en semanas y la temporada baja dura meses.
 
 ### Hallazgo de la Fase 10: todas las horas salían en UTC
 

@@ -145,4 +145,5 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 - **No hay Docker**: sin stack local de Supabase. Las migraciones van directas al proyecto enlazado y `supabase db dump` no funciona.
 - **Sin ruta IPv6**: el host directo de Postgres es inalcanzable. Por eso `apps/sync` usa PostgREST y no `psycopg`, y por eso los jobs son idempotentes en vez de transaccionales.
 - Secretos en `.env` (raíz, para el sync) y `apps/web/.env.local`. Ambos ignorados por git.
-- Los workflows necesitan `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en *Settings → Secrets → Actions*.
+- Los workflows necesitan `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_DB_URL` en *Settings → Secrets → Actions*. La última solo la usa `backup.yml`: el host directo es IPv6 y desde aquí no se alcanza, pero los runners de GitHub sí.
+- **El plan gratuito de Supabase no hace copias de seguridad** (eso es Pro) y **pausa el proyecto tras 7 días de poca actividad**. De ambas cosas se encarga `backup.yml`, semanal. Ver §14.
