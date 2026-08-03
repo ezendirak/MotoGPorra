@@ -33,7 +33,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 
 1. **Monitorización.** Hoy un fallo en producción solo deja el `digest` de `error.tsx` y los logs de Vercel: sirve para depurar cuando alguien avisa, no para enterarse.
 2. **Tests E2E de navegador**, si alguna vez se quieren. Hoy la lógica está cubierta a dos niveles —`npm test` para las funciones puras y `npm run db:verify` para RLS, SQL y progresión de la clasificación—, así que lo único que queda sin probar automáticamente es el JSX y la hidratación. Playwright cubriría eso a cambio de ~200 MB de navegadores, un usuario de prueba dedicado y triplicar el tiempo de CI.
-3. **Verificar la primera copia de seguridad.** Lanzar `backup.yml` a mano y comprobar que el artefacto contiene lo que hace falta para restaurar — en particular, si el volcado incluye `auth.users`: sin esos usuarios, los `profiles` quedarían apuntando a cuentas inexistentes.
+3. **Descargar una copia y mirarla por dentro.** El workflow ya vuelca esquema, datos y usuarios, y comprueba que no vengan vacíos. Falta abrir el artefacto una vez y confirmar que `usuarios.sql` trae de verdad las cuentas: si Supabase restringe el esquema `auth`, la copia serviría para los datos deportivos pero no para restaurar la porra entera.
 
 > Las **ejecuciones vacías del cron** son el mayor consumidor de minutos de Actions: `*/30 12-21 * * 6,0` corre 40 veces cada fin de semana del año, y solo 44 días tienen carrera — el 80% no hace nada. Es gratis mientras el repositorio sea público; si pasara a privado (2.000 min/mes), el arreglo es salir del job al principio cuando no haya sesión programada cerca.
 
@@ -239,13 +239,19 @@ El sincronizador usa `service_role` y por tanto **bypassa RLS**. Dos opciones:
 
 > ⚠️ **Decisión revisada durante la implementación: se usa A (PostgREST).**
 >
-> **Motivo:** Supabase solo publica un registro **AAAA** para el host directo (`db.<ref>.supabase.co`) y la red de desarrollo no tiene ruta IPv6 — `Test-NetConnection` falla y Node ni siquiera resuelve el nombre. Los endpoints de pooler de la región del proyecto (`eu-central-1`) responden `tenant/user not found`, así que tampoco hay una cadena de conexión alcanzable por IPv4. PostgREST viaja por HTTPS y funciona desde cualquier red.
+> **Motivo:** Supabase solo publica un registro **AAAA** para el host directo (`db.<ref>.supabase.co`) y la red de desarrollo no tiene ruta IPv6 — `Test-NetConnection` falla y Node ni siquiera resuelve el nombre. PostgREST viaja por HTTPS y funciona desde cualquier red.
+>
+> ❌ **Corregido en la fase 10:** aquí se afirmaba además que *«los endpoints de pooler responden `tenant/user not found`, así que tampoco hay una cadena de conexión alcanzable por IPv4»*. **Era falso, y el diagnóstico estaba mal.** El pooler compartido (Supavisor) es **IPv4 en todos los planes** y responde perfectamente; ese error lo produce usar el usuario `postgres` en vez de `postgres.<ref>`, que es el formato que el pooler exige. Medido en la fase 10: `A=[52.59.152.35 …]`, `tcp=responde`.
+>
+> La decisión de usar PostgREST **se sostiene igual** —sigue siendo el único camino desde una red sin IPv6 sin depender de un pooler— pero por un motivo, no por dos.
 >
 > **Coste asumido:** cada llamada es su propia transacción, luego un job no puede ser atómico de extremo a extremo. Si el proceso muere a mitad de una importación, quedan datos parcialmente escritos.
 >
 > **Cómo se compensa:** todos los jobs son **idempotentes** — upserts por `motogp_*_id` y reemplazo completo de colecciones —, de modo que una ejecución interrumpida se arregla repitiéndola. No es equivalente a una transacción, pero cubre el caso real: aquí no hay escrituras que dejen el sistema en un estado inconsistente *observable*, porque las puntuaciones se recalculan con `recalculate_race_scores` **después** de que las entradas del resultado estén completas, y esa función sí es atómica por ser una única sentencia SQL.
 >
-> **Cuándo revisarlo:** si en el futuro se ejecuta el sync desde un entorno con IPv6 (GitHub Actions lo tiene), se puede migrar a `psycopg` cambiando únicamente `apps/sync/db.py`. Los jobs y los mappers no se enteran.
+> **Cuándo revisarlo:** se puede migrar a `psycopg` cambiando únicamente `apps/sync/db.py`; los jobs y los mappers no se enteran. La vía es **el session pooler**, que es IPv4 y funciona desde cualquier sitio — no un entorno con IPv6.
+>
+> ❌ **Corregido en la fase 10:** aquí se decía «(GitHub Actions lo tiene)», refiriéndose a IPv6. **Los runners de GitHub no tienen IPv6.** Medido: `ipv6_runner=0`, cero direcciones IPv6 globales. Era una suposición mía escrita como si fuera un hecho comprobado.
 
 ### 3.4 Contrato de datos
 
@@ -1423,6 +1429,18 @@ Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Ant
 **Resuelto** con SMTP de Gmail y contraseña de aplicación: `smtp.gmail.com:587`, sin dominio y sin coste. Tras activarlo, Supabase sube el tope a 30 correos/hora, ajustable.
 
 > Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
+
+### Hallazgo de la Fase 10: dos afirmaciones de este documento eran falsas
+
+Montar la copia de seguridad costó cuatro intentos, y de ellos salieron dos correcciones a cosas que este mismo documento daba por ciertas en §3.3.
+
+**«Los poolers responden `tenant/user not found`».** Falso: el pooler compartido es IPv4 en todos los planes y responde sin problema. Ese error lo produce conectar con el usuario `postgres` cuando el pooler exige `postgres.<ref>` — el identificador del proyecto pegado al usuario. El mismo malentendido reapareció aquí literalmente (`password authentication failed for user "postgres"`) hasta que se corrigió la cadena.
+
+**«GitHub Actions tiene IPv6».** Falso, y esta la había escrito yo. Medido en el runner: `ipv6_runner=0`. La vía de escape hacia `psycopg` que dejamos anotada existe, pero pasa por el pooler, no por Actions.
+
+**Y un tercer fallo, en la propia comprobación de la copia.** El volcado funcionaba —52 KB de esquema, 533 KB de datos— pero el paso que lo validaba buscaba `create table` con un `grep` sensible a mayúsculas, y `pg_dump` lo escribe en mayúsculas. La copia se declaraba inválida estando bien.
+
+> Lección general: **las dos afirmaciones falsas tenían la misma forma** — una causa plausible, escrita como hecho, sin medir. La primera cerró la puerta a los poolers durante toda la fase 7b; la segunda abrió una que no existía. Cuando un diagnóstico decide una parte de la arquitectura, conviene dejar escrito **cómo se comprobó**, no solo qué se concluyó.
 
 ### Hallazgo de la Fase 10: el plan gratuito no hace copias, y el proyecto se pausa solo
 
