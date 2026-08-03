@@ -134,6 +134,30 @@ jobs:
           echo "::error::db dump --data-only (codigo $codigo) :: ${limpio//$'\n'/%0A}"
           exit 1
 
+      # `--data-only` vuelca `public` y nada más, así que sin este paso la copia
+      # no llevaría los usuarios — y `profiles.id` referencia `auth.users(id)`:
+      # restaurar sin ellos dejaría todos los perfiles apuntando al vacío.
+      #
+      # No es fatal si falla: Supabase restringe partes del esquema `auth` y
+      # vale más una copia de los datos deportivos que ninguna copia.
+      - name: Volcar usuarios
+        continue-on-error: true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set +e
+          salida=$(supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --schema auth -f usuarios.sql 2>&1)
+          codigo=$?
+          set -e
+          if [ $codigo -ne 0 ]; then
+            limpio=$(printf '%s' "$salida" \
+              | sed -E 's#(postgres(ql)?://[^:@]+):[^@]*@#\1:CONTRASENA-OCULTA@#g' \
+              | tail -c 800)
+            echo "::warning::sin copia de auth.users (codigo $codigo) :: ${limpio//$'\n'/%0A}"
+            # Marcador para que el paso siguiente no lo dé por bueno en silencio.
+            rm -f usuarios.sql
+          fi
+
       # Un volcado vacío es peor que ninguno: aparenta que hay copia. Si el
       # comando falla a medias o la base está pausada, esto lo detiene aquí.
       - name: Comprobar que la copia no está vacía
@@ -146,8 +170,19 @@ jobs:
               exit 1
             fi
           done
-          grep -q "create table" esquema.sql || {
-            echo "::error::el esquema no contiene ninguna tabla"; exit 1; }
+          # `-i`: pg_dump escribe CREATE TABLE en mayúsculas.
+          tablas=$(grep -ci "^create table" esquema.sql || true)
+          echo "tablas en el esquema: $tablas"
+          if [ "$tablas" -lt 10 ]; then
+            echo "::error::el esquema solo tiene $tablas tablas: la copia no es válida"
+            exit 1
+          fi
+
+          if [ -f usuarios.sql ]; then
+            echo "usuarios: $(stat -c%s usuarios.sql) bytes"
+          else
+            echo "::warning::esta copia NO incluye auth.users: restaurarla dejaría los perfiles sin cuenta detrás"
+          fi
 
       # ⚠️ Como ARTEFACTO y nunca commiteado: el repositorio es público y el
       # volcado contiene los datos de los participantes.
@@ -158,6 +193,9 @@ jobs:
           path: |
             esquema.sql
             datos.sql
+            usuarios.sql
+          # `usuarios.sql` puede no existir; sin esto el paso fallaría por ello.
+          if-no-files-found: warn
           retention-days: 90
 
       # El marcador es lo único que se commitea: una fecha, sin datos. Su
