@@ -67,6 +67,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | 14 | **Realtime solo publica `race_scores`** | Es la única tabla que cambia sin que el usuario haga nada. `bets` no se publica aunque la RLS proteja su contenido: el evento en sí ya delata que alguien acaba de apostar. `races` tampoco, porque su estado se deriva y no genera `UPDATE` |
 | 15 | **El UUID del administrador viaja como entrada del `workflow_dispatch`** | Es lo que rellena `sync_runs.triggered_by` y distingue una ejecución manual de una del cron. Una cadena vacía se convierte en `None` en el job: la FK contra `auth.users` rechaza lo que no sea un UUID, y lanzarlo desde la pestaña Actions deja el campo en blanco |
 | 16 | **Las horas se muestran siempre en `Europe/Madrid`**, no en la del dispositivo | Ver §14. Es determinista —servidor y cliente pintan lo mismo— y evita que el formateo dependa de dónde corra el proceso. Quien mire desde otro huso verá la hora de España, que para una porra entre amigos de aquí es lo que se espera |
+| 17 | **El panel puede reabrir carreras ya disputadas**, y ofrece recalcular | Reabrir una carrera pasada guarda las apuestas nuevas, pero el sync no reimporta un resultado que ya tiene, así que nadie las puntúa. `recalculate_race_scores` está revocada para `authenticated` y solo concedida a `service_role`, de modo que el botón pasa por `lib/supabase/admin.ts` y comprueba el rol por su cuenta |
 
 #### Sobre la decisión 12: por qué el registro es la excepción
 

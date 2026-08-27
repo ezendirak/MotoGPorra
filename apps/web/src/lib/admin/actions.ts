@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { requireAdmin } from '@/lib/auth/session'
-import { getSyncRuns, setRaceStatusOverride, setUserRole } from '@/services/admin.service'
+import {
+  getSyncRuns,
+  recalcularPuntuaciones,
+  setRaceStatusOverride,
+  setUserRole,
+} from '@/services/admin.service'
 import { dispararSync, TRABAJOS } from '@/services/sync.service'
 import { errorState, successState, type ActionState } from '@/types/api'
 
@@ -57,6 +62,35 @@ export async function overrideRaceStatus(
     status === 'auto'
       ? 'Estado devuelto al cálculo automático'
       : `Estado forzado a «${status}»`,
+  )
+}
+
+export async function recalculateRace(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin()
+
+  const parsed = z.uuid().safeParse(formData.get('raceId'))
+  if (!parsed.success) return errorState('Carrera no válida')
+
+  let filas: number
+  try {
+    filas = await recalcularPuntuaciones(parsed.data)
+  } catch (error) {
+    return errorState(error instanceof Error ? error.message : 'No se pudo recalcular')
+  }
+
+  // La clasificación se ve en media aplicación.
+  revalidatePath('/admin/races')
+  revalidatePath('/standings')
+  revalidatePath('/profile')
+  revalidatePath(`/races/${parsed.data}`)
+
+  return successState(
+    filas === 0
+      ? 'Recalculado: ninguna apuesta que puntuar'
+      : `Recalculado: ${filas} ${filas === 1 ? 'puntuación' : 'puntuaciones'}`,
   )
 }
 

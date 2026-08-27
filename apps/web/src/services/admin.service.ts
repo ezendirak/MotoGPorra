@@ -194,6 +194,38 @@ export async function setRaceStatusOverride(
   if (error) throw new Error(`No se pudo cambiar el estado: ${error.message}`)
 }
 
+/**
+ * Vuelve a puntuar una carrera a partir del resultado que ya está importado.
+ *
+ * Hace falta porque `recalculate_race_scores` está **revocada para
+ * `authenticated`** y solo concedida a `service_role`: la puntuación no es algo
+ * que un jugador pueda disparar. Normalmente la llama el sincronizador al
+ * importar el resultado, y con eso basta.
+ *
+ * El caso que no cubre —y para el que existe esto— es reabrir una carrera ya
+ * disputada: la apuesta nueva se guarda, pero el resultado ya estaba importado,
+ * así que el sync no vuelve a tocarlo y nadie recalcula. Sin este botón, esa
+ * apuesta no puntuaría jamás.
+ *
+ * Como usa `service_role`, que bypasa la RLS, comprueba el rol por su cuenta:
+ * aquí no hay red de seguridad debajo.
+ */
+export async function recalcularPuntuaciones(raceId: string): Promise<number> {
+  if (!(await isAdmin())) {
+    throw new Error('Solo un administrador puede recalcular')
+  }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin.rpc('recalculate_race_scores', {
+    p_race_id: raceId,
+  })
+
+  if (error) throw new Error(`No se pudo recalcular: ${error.message}`)
+
+  // La función devuelve cuántas filas de puntuación ha escrito.
+  return typeof data === 'number' ? data : 0
+}
+
 /** Cambia el rol de un participante. */
 export async function setUserRole(userId: string, role: AppRole): Promise<void> {
   const supabase = await createClient()

@@ -3,7 +3,7 @@
 import { useActionState } from 'react'
 
 import { Alert } from '@/components/ui/alert'
-import { overrideRaceStatus } from '@/lib/admin/actions'
+import { overrideRaceStatus, recalculateRace } from '@/lib/admin/actions'
 import { idleState } from '@/types/api'
 
 /**
@@ -24,17 +24,20 @@ const OPCIONES = [
 export function RaceStatusControl({
   raceId,
   overrideActual,
+  tieneResultado,
 }: {
   raceId: string
   overrideActual: string | null
+  /** Si ya hay resultado oficial, se puede volver a puntuar. */
+  tieneResultado: boolean
 }) {
   const [state, formAction] = useActionState(overrideRaceStatus, idleState)
+  const [recalculo, recalcularAction] = useActionState(recalculateRace, idleState)
 
   return (
-    <form action={formAction} className="mt-3 flex flex-col gap-2">
-      <input type="hidden" name="raceId" value={raceId} />
-
-      <div className="flex gap-2">
+    <div className="mt-3 flex flex-col gap-2">
+      <form action={formAction} className="flex gap-2">
+        <input type="hidden" name="raceId" value={raceId} />
         <label className="sr-only" htmlFor={`status-${raceId}`}>
           Estado forzado
         </label>
@@ -57,9 +60,27 @@ export function RaceStatusControl({
         >
           Aplicar
         </button>
-      </div>
+      </form>
 
       <Alert state={state} />
-    </form>
+
+      {/*
+        Reabrir una carrera ya disputada guarda la apuesta nueva, pero nadie la
+        puntúa: el sincronizador no reimporta un resultado que ya tiene. Este
+        botón es lo que cierra ese hueco.
+      */}
+      {tieneResultado && (
+        <form action={recalcularAction} className="flex flex-col gap-2">
+          <input type="hidden" name="raceId" value={raceId} />
+          <button
+            type="submit"
+            className="h-9 rounded-lg border border-zinc-700 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-white"
+          >
+            Recalcular puntuaciones
+          </button>
+          <Alert state={recalculo} />
+        </form>
+      )}
+    </div>
   )
 }
