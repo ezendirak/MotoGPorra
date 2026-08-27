@@ -1430,6 +1430,28 @@ Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Ant
 
 > Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
 
+### Hallazgo de la Fase 10: un resultado «oficial» sin resultado dentro
+
+Con dos participantes reales apostando, la clasificación salía **vacía**. Los datos contaban la historia entera:
+
+```
+2026-08-09T13:44  results  partial  {"pilotos_sin_resolver":["R12 race"]}
+2026-08-09T14:28  results  success  {"ya_tenian_resultado":24}   ← ya nunca reintenta
+```
+
+Un piloto de Silverstone no casó con ninguno de los 29 de la base — un sustituto que debutaba ese fin de semana—, y `resolve_rider_id` lanzó `RiderNotResolved`. Eso es **lo que §6.2.1 manda hacer**: abortar la carrera antes que puntuar un podio mal resuelto.
+
+El problema fue el **orden**. `_import_race_result` escribía la cabecera de `race_results` con `status='official'` y *después* resolvía los pilotos. Al abortar, quedaba una cabecera oficial con **cero entradas**; y como el job se salta las carreras que ya tienen resultado, esas dos quedaron congeladas para siempre: sin podio que comparar, `recalculate_race_scores` no generaba ni una fila, y la clasificación no podía existir.
+
+Lo perverso es que **todo parecía correcto**: `sync_runs` decía `success` en las 20 ejecuciones siguientes, la carrera aparecía como `finished` en la app, y el resultado existía. Solo estaba hueco.
+
+**Dos correcciones:**
+
+1. **Resolver todos los pilotos antes de escribir nada.** Una carrera que falla ya no deja rastro, así que el siguiente intento la reintenta con normalidad. El job `riders` corre antes que `results` justo para cubrir a los sustitutos, y ahora esa red de seguridad sirve de algo.
+2. **Una cabecera con cero entradas no cuenta como importada.** Con un conteo embebido de PostgREST —una sola consulta— cualquier resultado hueco se reintenta solo, sin `backfill` manual. Esto es lo que reparó las dos carreras de Silverstone en la primera ejecución tras el arreglo.
+
+> Lección general: **escribir la cabecera antes que el contenido convierte un fallo recuperable en uno permanente.** Y un job idempotente deja de serlo en cuanto su condición de «ya hecho» mira algo distinto de lo que de verdad importa.
+
 ### Hallazgo de la Fase 10: dos afirmaciones de este documento eran falsas
 
 Montar la copia de seguridad costó cuatro intentos, y de ellos salieron dos correcciones a cosas que este mismo documento daba por ciertas en §3.3.

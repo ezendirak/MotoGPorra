@@ -129,6 +129,7 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 
 ## Errores que ya cometimos una vez
 
+- **Nunca escribir la cabecera antes que el contenido.** El sync creaba `race_results` como `official` y *luego* resolvía los pilotos; al abortar por un piloto sin resolver quedaba un resultado oficial vacío que el job daba por importado para siempre. Se resuelve todo lo que pueda fallar **antes** de la primera escritura, y la condición de «ya importado» exige que haya entradas, no solo cabecera.
 - **`SELECT ... FOR SHARE` bajo RLS** evalúa también las políticas de **UPDATE**. Cualquier cláusula de bloqueo en una función `SECURITY INVOKER` exige que el rol tenga política de UPDATE sobre esa tabla.
 - **Las vistas sin `security_invoker`** se ejecutan con permisos del propietario y bypasan la RLS.
 - **Los triggers corren con los permisos de quien hace la operación**: hace falta `GRANT EXECUTE` sobre la función del trigger.

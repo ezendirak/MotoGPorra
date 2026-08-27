@@ -186,6 +186,33 @@ def _import_race_result(
     if not entradas:
         return "sin_disputar"
 
+    # ------------------------------------------------------------------
+    # PRIMERO se resuelven todos los pilotos, ANTES de escribir nada.
+    #
+    # `resolve_rider_id` lanza `RiderNotResolved` cuando un piloto no casa, y
+    # el job la captura para saltarse esa carrera (§6.2.1). Si la cabecera ya
+    # estuviera escrita, esa carrera quedaría con un resultado marcado
+    # 'official' y sin una sola línea dentro — y como el job se salta las que
+    # ya tienen resultado, no volvería a intentarlo nunca. Pasó de verdad con
+    # Silverstone 2026: un piloto sin resolver dejó dos carreras con el
+    # resultado vacío y la clasificación en blanco para siempre.
+    #
+    # Resolviendo antes, una carrera que falla no deja ningún rastro y el
+    # siguiente intento la reintenta con normalidad.
+    # ------------------------------------------------------------------
+    resueltas = [
+        (
+            e,
+            mappers.resolve_rider_id(
+                e, by_motogp_id=by_motogp_id, by_legacy_id=by_legacy_id
+            ),
+            by_constructor.get(e.constructor.id)
+            if e.constructor and e.constructor.id
+            else None,
+        )
+        for e in entradas
+    ]
+
     cabecera = db.upsert(
         "race_results",
         [
@@ -204,24 +231,15 @@ def _import_race_result(
     )
     race_result_id = cabecera[0]["id"]
 
-    filas = []
-    for e in entradas:
-        rider_id = mappers.resolve_rider_id(
-            e, by_motogp_id=by_motogp_id, by_legacy_id=by_legacy_id
+    filas = [
+        mappers.map_result_entry(
+            e,
+            race_result_id=race_result_id,
+            rider_id=rider_id,
+            constructor_id=constructor_id,
         )
-        constructor_id = (
-            by_constructor.get(e.constructor.id)
-            if e.constructor and e.constructor.id
-            else None
-        )
-        filas.append(
-            mappers.map_result_entry(
-                e,
-                race_result_id=race_result_id,
-                rider_id=rider_id,
-                constructor_id=constructor_id,
-            )
-        )
+        for e, rider_id, constructor_id in resueltas
+    ]
 
     # Reemplazo completo: idempotente y evita arrastrar posiciones antiguas si
     # MotoGP revisa el resultado por una sanción.
@@ -292,10 +310,21 @@ def sync_results(
         sin_resolver: list[str] = []
         ya_estaban = 0
 
+        # Un resultado cuenta como importado solo si tiene líneas dentro.
+        #
+        # Una cabecera 'official' con cero entradas no es un resultado: es una
+        # importación que se quedó a medias. Contarla como buena es lo que hizo
+        # que Silverstone 2026 quedara sin puntuar de forma permanente. Con el
+        # conteo embebido —una sola consulta— esas carreras se reintentan solas
+        # en la siguiente ejecución, sin necesidad de un backfill manual.
         con_resultado = {
             r["race_id"]
-            for r in db.select("race_results", columns="race_id,status")
+            for r in db.select(
+                "race_results",
+                columns="race_id,status,race_result_entries(count)",
+            )
             if r["status"] == "official"
+            and (r.get("race_result_entries") or [{}])[0].get("count", 0) > 0
         }
 
         for carrera in carreras:
