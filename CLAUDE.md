@@ -1,10 +1,12 @@
 # MotoGPorra
 
-Porra anual de MotoGP. Cada participante predice el podio (🥇🥈🥉) de cada Gran Premio antes de que empiecen los entrenamientos. El resultado oficial se importa solo y las puntuaciones se recalculan sin intervención manual.
+Porra anual de MotoGP. Cada participante predice el podio (🥇🥈🥉) de cada Gran Premio antes de que empiece la calificación. El resultado oficial se importa solo y las puntuaciones se recalculan sin intervención manual.
 
 **La puntuación depende de QUÉ posiciones aciertes y NO es aditiva:** 1-2-3 vale 15, pero 1-2-X vale 10 y no los 7 que saldrían de sumar. Vive como tabla de consulta en `scoring_rules.points_by_pattern`, con clave de tres caracteres (`'110'` = acertar 1º y 2º). Un GP reparte de 0 a 15 puntos.
 
 **No hay sprint.** Solo se apuesta a la carrera del domingo; `kind` sigue en el esquema por si volviera.
+
+**Las apuestas cierran 5 minutos antes de la Q1**, no antes de FP1: se apuesta con los entrenamientos vistos y sin la parrilla de salida. Lo calcula `mappers.betting_close_time`, y si un fin de semana no tuviera Q1 el respaldo cierra en la primera sesión — antes de lo previsto, nunca después.
 
 > Este fichero son las **reglas estables**. El estado del proyecto, las decisiones tomadas y lo que queda pendiente están en [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -55,13 +57,14 @@ npm run check        # formato + lint + tipos + tests  (pasar SIEMPRE antes de c
 npm test             # lógica pura con el runner de Node, sin dependencias
 npm run build
 npm run db:push      # aplicar migraciones nuevas al proyecto enlazado
-npm run db:verify    # 36 pruebas de esquema, RLS y clasificación contra la base real
+npm run db:verify    # 38 pruebas de esquema, RLS y clasificación contra la base real
 npx supabase gen types typescript --linked > apps/web/src/types/database.types.ts
 
 npm run icons --workspace=web   # regenera los PNG de la PWA desde el SVG del script
 
 .venv/Scripts/python -m motogporra_sync <riders|calendar|results|images|backfill|all>
 cd packages/motogp_client && ../../.venv/Scripts/python -m pytest -q
+cd apps/sync && ../../.venv/Scripts/python -m pytest -q
 ```
 
 ---

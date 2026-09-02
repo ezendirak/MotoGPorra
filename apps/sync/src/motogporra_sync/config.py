@@ -37,8 +37,8 @@ class SyncConfig:
     category: str = "MotoGP"
     """Única categoría sincronizada de momento. El esquema soporta las cuatro."""
 
-    betting_close_margin_minutes: int = 15
-    """Minutos antes de la primera sesión (FP1) en que se cierran las apuestas."""
+    betting_close_margin_minutes: int = 5
+    """Minutos antes de la Q1 en que se cierran las apuestas."""
 
     request_timeout: int = 30
 

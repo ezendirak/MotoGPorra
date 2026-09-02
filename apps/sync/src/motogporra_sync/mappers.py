@@ -16,10 +16,13 @@ Rarezas contempladas, todas verificadas contra respuestas reales:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 from motogp_client.models import Circuit, Event, Rider, Session
+
+logger = logging.getLogger(__name__)
 
 # `type` de sesión -> `session_kind` del esquema.
 _SESSION_KIND = {
@@ -138,16 +141,33 @@ def map_race(
 def betting_close_time(
     sessions: list[Session], *, margin_minutes: int
 ) -> datetime | None:
-    """Momento de cierre: la primera sesión del fin de semana, menos el margen.
+    """Momento de cierre: la Q1 del fin de semana, menos el margen.
 
-    Se usa `min(date)` en vez de buscar el código 'FP1' a propósito: así el
-    cálculo es inmune a un cambio de formato de fin de semana. Filtrar por un
-    código exacto se rompería en silencio y dejaría las apuestas abiertas de
-    más — que es justo el fallo que no nos podemos permitir.
+    Se apuesta habiendo visto los entrenamientos pero no la parrilla, que es
+    donde está la información que de verdad decide un podio.
+
+    Buscar un código exacto tiene un riesgo que `min(date)` no tenía: si
+    MotoGP renombra la sesión o cambia el formato del fin de semana, aquí no
+    habría Q1 y el cálculo se quedaría sin ancla. Por eso el respaldo NO es
+    devolver `None` (dejaría la carrera sin apuestas posibles) ni dejarlo
+    abierto, sino **la primera sesión del fin de semana**: cierra antes de lo
+    previsto, nunca después. Equivocarse cerrando pronto es un incordio;
+    equivocarse cerrando tarde deja apostar con la parrilla ya vista, y eso
+    rompe la porra.
     """
+    q1 = next((s for s in sessions if s.code == "Q1" and s.date is not None), None)
+    if q1 is not None and q1.date is not None:
+        return q1.date - timedelta(minutes=margin_minutes)
+
     fechas = [s.date for s in sessions if s.date is not None]
     if not fechas:
         return None
+
+    logger.warning(
+        "Fin de semana sin Q1 (%s): el cierre cae en la primera sesión, %s",
+        ", ".join(sorted(s.code for s in sessions)) or "sin sesiones",
+        min(fechas).isoformat(),
+    )
     return min(fechas) - timedelta(minutes=margin_minutes)
 
 

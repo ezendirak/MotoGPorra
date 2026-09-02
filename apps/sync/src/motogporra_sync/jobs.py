@@ -458,9 +458,9 @@ def sync_calendar(
                 sesiones, margin_minutes=config.betting_close_margin_minutes
             )
 
-            # Una carrera apostable por Gran Premio, la del domingo. El cierre
-            # sigue siendo 15 min antes de la primera sesión del fin de semana
-            # para que se apueste a ciegas, sin haber visto los entrenamientos.
+            # Una carrera apostable por Gran Premio, la del domingo. Cierra 5
+            # min antes de la Q1: se apuesta con los entrenamientos vistos,
+            # pero sin saber la parrilla de salida.
             carreras = [
                 mappers.map_race(
                     s,

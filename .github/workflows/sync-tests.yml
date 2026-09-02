@@ -30,11 +30,17 @@ jobs:
       - name: Instalar
         run: |
           python -m pip install --upgrade pip
-          pip install './packages/motogp_client[dev]' ./apps/sync
+          pip install './packages/motogp_client[dev]' './apps/sync[dev]'
 
       - name: Tests de la libreria
         working-directory: packages/motogp_client
         # Sin red: todos los tests usan respuestas grabadas de la API.
+        run: python -m pytest -q
+
+      - name: Tests del sincronizador
+        working-directory: apps/sync
+        # El cierre de apuestas se decide aqui: un fallo no da error, deja la
+        # porra abierta de mas. Sin red, como los de la libreria.
         run: python -m pytest -q
 
       - name: Comprobar que el sincronizador importa

@@ -53,7 +53,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, **22 carreras apostables** (u
 |---|---|---|
 | 1 | **Solo MotoGP.** Moto2/Moto3 más adelante | El esquema mantiene `categories`; el sync y la UI filtran a MotoGP. Añadir categorías después es configuración, no migración |
 | 2 | ~~**Sí se apuesta al Sprint**~~ → **REVERTIDA (27/08/2026): solo se apuesta al Gran Premio.** | Un GP genera **una** carrera apostable (`RAC`). Las 22 filas de sprint se borraron. `kind` se conserva en el esquema por si volviera, pero el sync ya no las crea |
-| 3 | **Cierre 15 min antes de FP1** | Se apuesta a ciegas, sin haber visto ningún entrenamiento. Verificado en Aragón 2026: FP1 el viernes 12:45, cierre a las 12:30 |
+| 3 | ~~**Cierre 15 min antes de FP1**~~ → **REVISADA (02/09/2026): cierre 5 min antes de la Q1.** | Se apuesta con los entrenamientos vistos, pero sin la parrilla de salida. El cierre pasa del viernes por la mañana al sábado. Verificado en San Marino 2026: Q1 el sábado 10:50 UTC, cierre a las 10:45 |
 | 4 | **Los empates se comparten** | `rank()` sobre puntos; sin criterios de desempate. Se muestra la misma posición |
 | 5 | **Registro abierto** | Sin invitaciones ni aprobación. Landing → login o alta |
 | 6 | **`get_riders` solo da la temporada actual** | El histórico se construye por **acumulación**: cada temporada deja su snapshot en `rider_season_entries` y jamás se borra. No es reconstruible hacia atrás |
@@ -132,9 +132,9 @@ Aplicación web PWA Mobile First para gestionar una porra anual de MotoGP: cada 
 ### 1.3 Justificación de decisiones
 
 - **`Rider` separado de `RiderSeasonEntry`.** Un piloto cambia de equipo, dorsal y hasta de categoría entre temporadas. Si guardáramos el equipo en `riders`, perderíamos el histórico al sincronizar 2027. Separar identidad estable de inscripción anual es lo que permite consultar "la apuesta de 2026 con el equipo que tenía entonces".
-- **`Event` separado de `Session`.** El cierre de apuestas se calcula a partir de la **primera sesión oficial** del evento (FP1), no a partir de la carrera. Sin `Session` no podríamos derivar esa fecha y tendríamos que introducirla a mano — algo explícitamente descartado. Verificado: `GET /v1/results/sessions` devuelve las 8 sesiones del GP con su `date` **en UTC**, mientras que `date_start` del evento es solo el arranque del fin de semana (jueves 08:00 local) y no sirve para el cierre.
+- **`Event` separado de `Session`.** El cierre de apuestas se calcula a partir de una **sesión concreta** del evento (la Q1), no a partir de la carrera. Sin `Session` no podríamos derivar esa fecha y tendríamos que introducirla a mano — algo explícitamente descartado. Verificado: `GET /v1/results/sessions` devuelve las 8 sesiones del GP con su `date` **en UTC**, mientras que `date_start` del evento es solo el arranque del fin de semana (jueves 08:00 local) y no sirve para el cierre.
 - **`Race` como proyección de una sesión apostable.** Toda la lógica de porra (apuestas, resultados, puntos) cuelga de una única entidad. Con el sprint confirmado (decisión 2), un GP produce **dos** filas en `races`: una para `SPR` y otra para `RAC`, ambas con el mismo `betting_closes_at`. El modelo de apuestas no cambia en absoluto: `bets` sigue colgando de `race_id`.
-- **El cierre va antes de FP1, no antes de la carrera.** Cerrar el domingo daría al apostante la información de los entrenamientos y de la clasificación. Cerrando el viernes se apuesta a ciegas, que es lo que hace justa la porra.
+- **El cierre va antes de la Q1, no antes de la carrera.** Cerrar el domingo daría al apostante la parrilla de salida ya conocida. Cerrando el sábado antes de calificar se apuesta con los entrenamientos vistos pero sin saber quién sale delante, que es lo que hace justa la porra.
 - **`BetPick` como tabla hija y no tres columnas `p1/p2/p3`.** Tres columnas son más simples hoy, pero si mañana la porra pasa a top-5, a "piloto que abandona" o a puntuación ponderada por posición, habría que migrar tabla y toda la lógica. La tabla hija cuesta un `join` y nos deja el formato abierto.
 - **`ScoringRule` por temporada.** La tabla de puntos vive en `points_by_pattern`, no dentro de la función SQL: cambiar cuánto vale acertar 1º y 3º es un `UPDATE`, no una migración.
 - **Estado de la carrera derivado, no escrito a mano.** Ver §4.6.
@@ -481,27 +481,15 @@ create index rse_lookup_idx on rider_season_entries (season_id, category_id) whe
 
 ### 4.6 Cálculo automático del estado y del cierre
 
-`betting_closes_at` lo escribe el sincronizador como **`scheduled_at` de la primera sesión del evento para esa categoría** (que es FP1 por definición cronológica), menos 15 minutos:
+`betting_closes_at` lo escribe el sincronizador como **el `date` de la Q1 de ese evento y categoría, menos 5 minutos**. La base no lo calcula: solo lo almacena. La regla vive entera en `mappers.betting_close_time`, y la ejercitan los tests de `apps/sync/tests/`.
 
-```sql
--- Ejecutado por el sync tras importar sesiones.
--- El cierre sale de la PRIMERA sesión del fin de semana, no de la carrera.
-update races r
-set betting_closes_at = s.first_session_at - interval '15 minutes'
-from (
-  select event_id, category_id, min(scheduled_at) as first_session_at
-  from sessions
-  where scheduled_at is not null
-  group by event_id, category_id
-) s
-where r.event_id = s.event_id
-  and r.category_id = s.category_id
-  and r.betting_closes_at is distinct from s.first_session_at - interval '15 minutes';
-```
-
-> **`min(scheduled_at)` en vez de filtrar por `code = 'FP1'`.** Es inmune a cambios de formato de fin de semana: si MotoGP renombra las sesiones o añade una previa, "la primera del fin de semana" sigue siendo correcta. Filtrar por código exacto se rompería en silencio y las apuestas quedarían abiertas de más.
+> **Por qué la Q1 y no FP1.** Cerrar antes del primer entrenamiento obligaba a apostar sin haber visto rodar a nadie. Cerrar antes de la Q1 deja ver los entrenamientos y la práctica, pero no la **parrilla de salida**, que es la información que de verdad decide un podio.
 >
-> Verificado: para Tailandia 2026, FP1 es `2026-02-27T10:45:00+00:00` → cierre a las `10:30 UTC`. Las fechas de sesión llegan **ya en UTC**, así que no hay conversión de zona horaria que pueda salir mal. La UI sí convierte a hora local del usuario para mostrarla.
+> **Por qué ya no vale `min(scheduled_at)`.** Buscar un código exacto tiene el riesgo que el diseño original quería evitar: si MotoGP renombrara la sesión o cambiara el formato del fin de semana, no habría Q1 que anclar. El respaldo no es dejarlo abierto ni devolver `NULL`, sino **volver a la primera sesión del fin de semana**: cierra antes de lo previsto, nunca después. Equivocarse cerrando pronto es un incordio; equivocarse cerrando tarde permite apostar con la parrilla vista, y eso rompe la porra. El caso está cubierto por un test y deja un `warning` en el log.
+>
+> Verificado: para San Marino 2026, la Q1 es `2026-09-12T10:50:00+00:00` → cierre a las `10:45 UTC`. Las fechas de sesión llegan **ya en UTC**, así que no hay conversión de zona horaria que pueda salir mal. La UI sí convierte a hora local del usuario para mostrarla.
+>
+> Al aplicar el cambio se recalcularon las 22 carreras de 2026, las 13 ya disputadas incluidas. Se comprobó antes que **ninguna cambia de estado**: los dos cierres, el viejo y el nuevo, quedan en el pasado para las disputadas y en el futuro para las nueve pendientes.
 
 El **estado no se almacena**: se deriva en una vista, de modo que nunca puede quedar obsoleto por falta de un cron.
 
