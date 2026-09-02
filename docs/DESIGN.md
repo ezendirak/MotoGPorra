@@ -25,7 +25,7 @@
 | 9 — PWA | ✅ | instalada desde el móvil en `motogporra.vercel.app` |
 | 10 — Producción | 🔶 | desplegada en Vercel, SMTP propio, alta y recuperación probadas; faltan backups, monitorización y tests E2E |
 
-Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pilotos (22 activos), 22 resultados oficiales y 476 líneas de clasificación.
+Datos cargados: 22 circuitos, 22 GP, 177 sesiones, **22 carreras apostables** (una por GP), 30 pilotos (22 activos) y los resultados de las carreras ya disputadas.
 
 ### Lo siguiente, por orden de valor
 
@@ -53,7 +53,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 |---|---|---|
 | 1 | **Solo MotoGP.** Moto2/Moto3 más adelante | El esquema mantiene `categories`; el sync y la UI filtran a MotoGP. Añadir categorías después es configuración, no migración |
 | 2 | ~~**Sí se apuesta al Sprint**~~ → **REVERTIDA (27/08/2026): solo se apuesta al Gran Premio.** | Un GP genera **una** carrera apostable (`RAC`). Las 22 filas de sprint se borraron. `kind` se conserva en el esquema por si volviera, pero el sync ya no las crea |
-| 3 | **Cierre 15 min antes de FP1** | Único cierre por GP: ambas apuestas (sprint y carrera) cierran a la vez, antes de FP1 |
+| 3 | **Cierre 15 min antes de FP1** | Se apuesta a ciegas, sin haber visto ningún entrenamiento. Verificado en Aragón 2026: FP1 el viernes 12:45, cierre a las 12:30 |
 | 4 | **Los empates se comparten** | `rank()` sobre puntos; sin criterios de desempate. Se muestra la misma posición |
 | 5 | **Registro abierto** | Sin invitaciones ni aprobación. Landing → login o alta |
 | 6 | **`get_riders` solo da la temporada actual** | El histórico se construye por **acumulación**: cada temporada deja su snapshot en `rider_season_entries` y jamás se borra. No es reconstruible hacia atrás |
@@ -121,7 +121,7 @@ Aplicación web PWA Mobile First para gestionar una porra anual de MotoGP: cada 
 
 ### 1.2 Invariantes de dominio
 
-1. Un usuario tiene **como máximo una apuesta por carrera** (una para el sprint y otra para la carrera del domingo son apuestas distintas).
+1. Un usuario tiene **como máximo una apuesta por carrera**, y hay una carrera apostable por Gran Premio.
 2. Una apuesta tiene **exactamente 3 picks**, en posiciones 1, 2 y 3, **sin pilotos repetidos**.
 3. Los pilotos elegidos deben estar **inscritos en la temporada y categoría de esa carrera**.
 4. Una apuesta solo es creable o modificable mientras la carrera esté en estado `open`.
@@ -134,9 +134,9 @@ Aplicación web PWA Mobile First para gestionar una porra anual de MotoGP: cada 
 - **`Rider` separado de `RiderSeasonEntry`.** Un piloto cambia de equipo, dorsal y hasta de categoría entre temporadas. Si guardáramos el equipo en `riders`, perderíamos el histórico al sincronizar 2027. Separar identidad estable de inscripción anual es lo que permite consultar "la apuesta de 2026 con el equipo que tenía entonces".
 - **`Event` separado de `Session`.** El cierre de apuestas se calcula a partir de la **primera sesión oficial** del evento (FP1), no a partir de la carrera. Sin `Session` no podríamos derivar esa fecha y tendríamos que introducirla a mano — algo explícitamente descartado. Verificado: `GET /v1/results/sessions` devuelve las 8 sesiones del GP con su `date` **en UTC**, mientras que `date_start` del evento es solo el arranque del fin de semana (jueves 08:00 local) y no sirve para el cierre.
 - **`Race` como proyección de una sesión apostable.** Toda la lógica de porra (apuestas, resultados, puntos) cuelga de una única entidad. Con el sprint confirmado (decisión 2), un GP produce **dos** filas en `races`: una para `SPR` y otra para `RAC`, ambas con el mismo `betting_closes_at`. El modelo de apuestas no cambia en absoluto: `bets` sigue colgando de `race_id`.
-- **Un único cierre por GP, no uno por sesión.** Cerrar el sprint el sábado y la carrera el domingo daría al apostante información de la clasificación. Cerrando ambas antes de FP1 se apuesta a ciegas, que es lo que hace justa la porra.
+- **El cierre va antes de FP1, no antes de la carrera.** Cerrar el domingo daría al apostante la información de los entrenamientos y de la clasificación. Cerrando el viernes se apuesta a ciegas, que es lo que hace justa la porra.
 - **`BetPick` como tabla hija y no tres columnas `p1/p2/p3`.** Tres columnas son más simples hoy, pero si mañana la porra pasa a top-5, a "piloto que abandona" o a puntuación ponderada por posición, habría que migrar tabla y toda la lógica. La tabla hija cuesta un `join` y nos deja el formato abierto.
-- **`ScoringRule` por temporada.** Hoy es "1 punto por acierto exacto". Externalizarlo evita que la regla quede incrustada en una función SQL imposible de cambiar sin migración.
+- **`ScoringRule` por temporada.** La tabla de puntos vive en `points_by_pattern`, no dentro de la función SQL: cambiar cuánto vale acertar 1º y 3º es un `UPDATE`, no una migración.
 - **Estado de la carrera derivado, no escrito a mano.** Ver §4.6.
 
 ---
@@ -146,7 +146,7 @@ Aplicación web PWA Mobile First para gestionar una porra anual de MotoGP: cada 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                            NAVEGADOR (PWA)                            │
-│  Next.js App Router · React Server Components · Tailwind · Serwist    │
+│  Next.js App Router · React Server Components · Tailwind · sw.js      │
 └───────────────┬──────────────────────────────────────────────────────┘
                 │ HTTPS
 ┌───────────────▼──────────────────────────────────────────────────────┐
@@ -375,7 +375,7 @@ create index sessions_scheduled_idx  on sessions (scheduled_at);
 
 ### 4.4 Carreras (unidad de porra)
 
-Con el sprint confirmado (decisión 2), un GP genera **dos** filas: `kind = 'sprint'` y `kind = 'race'`.
+Un GP genera **una** fila, la de la carrera del domingo. El `kind` se conserva —el enumerado admite `sprint`— por si algún día volviera, pero el sincronizador solo crea `race` (decisión 2, revertida).
 
 ```sql
 create table races (
@@ -405,9 +405,7 @@ create index races_season_sched_idx on races (season_id, scheduled_at);
 create index races_closes_at_idx    on races (closes_at);
 ```
 
-> **Puntuación separada.** Sprint y carrera puntúan por separado y ambas suman a la misma clasificación general. Si más adelante se quiere que el sprint valga menos, se añade un multiplicador a `scoring_rules` por `kind` — sin migración estructural.
->
-> **No todos los GP tienen sprint** en todas las categorías (`event_categories[].sprint_num_laps` es `null` para Moto2/Moto3). El sync crea la fila `sprint` solo si existe la sesión `SPR`, así que la ausencia se resuelve sola.
+> **Volver a incluir el sprint sería configuración, no migración.** El enumerado, la columna `kind` y la restricción de unicidad `(event_id, category_id, kind)` siguen soportando dos filas por GP: bastaría con que el sync volviera a crear la de `SPR` y con decidir qué tabla de puntos le toca.
 
 ### 4.5 Pilotos y equipos
 
@@ -487,7 +485,7 @@ create index rse_lookup_idx on rider_season_entries (season_id, category_id) whe
 
 ```sql
 -- Ejecutado por el sync tras importar sesiones.
--- Afecta por igual a la fila 'sprint' y a la 'race' del mismo GP (decisión 3).
+-- El cierre sale de la PRIMERA sesión del fin de semana, no de la carrera.
 update races r
 set betting_closes_at = s.first_session_at - interval '15 minutes'
 from (
@@ -635,8 +633,10 @@ create unique index rre_position_uk
 create table scoring_rules (
   id                 uuid primary key default gen_random_uuid(),
   season_id          uuid not null references seasons(id) on delete cascade,
-  points_exact_position smallint not null default 1,   -- acierto de posición exacta
-  points_podium_any     smallint not null default 0,   -- piloto en podio, otra posición
+  -- Tabla de puntos por PATRÓN de aciertos. Clave de 3 caracteres, 1=acierto
+  -- y 0=fallo, en orden 1º-2º-3º. Un patrón ausente vale 0.
+  points_by_pattern  jsonb not null default
+    '{"111":15,"110":10,"101":7,"100":5,"011":3,"010":2,"001":1}'::jsonb,
   created_at         timestamptz not null default now(),
   constraint scoring_rules_season_uk unique (season_id)
 );
@@ -668,7 +668,7 @@ join profiles p on p.id = s.user_id
 group by r.season_id, s.user_id, p.display_name, p.avatar_url;
 ```
 
-> **Vista, no tabla materializada.** Con ~20 usuarios × ~44 sesiones apostables (22 sprints + 22 carreras) son ~880 filas: el agregado es instantáneo y siempre coherente. Si el sistema creciera a miles de usuarios, se convierte en vista materializada refrescada al final del sync — cambio local, sin impacto en el frontend.
+> **Vista, no tabla materializada.** Con ~20 usuarios × 22 carreras son ~440 filas: el agregado es instantáneo y siempre coherente. Si el sistema creciera a miles de usuarios, se convierte en vista materializada refrescada al final del sync — cambio local, sin impacto en el frontend.
 >
 > **Empates compartidos (decisión 4).** `rank()` ya produce exactamente eso: dos usuarios con los mismos puntos comparten posición y la siguiente salta (1, 2, 2, 4). No hay criterio de desempate, así que no hay nada que configurar ni que explicar al usuario. `total_exact_hits` se muestra como dato informativo, no ordena.
 
@@ -713,7 +713,7 @@ auth.users ─┬── profiles (1:1)
 | Relación | Cardinalidad | `ON DELETE` | Motivo |
 |---|---|---|---|
 | `seasons` → `events` | 1:N | `cascade` | Borrar una temporada de prueba limpia todo |
-| `events` → `races` | 1:2 | `cascade` | Sprint y carrera; una carrera no existe sin su GP |
+| `events` → `races` | 1:1 | `cascade` | Una carrera apostable por GP; no existe sin él |
 | `races` → `bets` | 1:N | `cascade` | — |
 | `bets` → `bet_picks` | 1:3 | `cascade` | Los picks no tienen vida propia |
 | `riders` → `bet_picks` | 1:N | `restrict` | Nunca borrar un piloto apostado; se marca inactivo |
@@ -762,7 +762,7 @@ auth.users ─┬── profiles (1:1)
 >
 > **Calendario semanal, no diario.** El calendario cambia poquísimo; sondearlo cada día son ~470 peticiones semanales para nada. Semanal + botón manual cubre cualquier cambio de horario con margen de sobra, dado que el cierre es el viernes.
 >
-> **Sábado incluido** en el job `results`: con el sprint apostable (decisión 2), hay resultado que importar el sábado.
+> **El cron sigue cubriendo el sábado** aunque ya no haya sprint apostable: cuesta lo mismo y absorbe un cambio de horario o una carrera adelantada sin tocar nada.
 
 ### 6.2 Algoritmo (job `results`)
 
@@ -962,15 +962,17 @@ Se ejecuta **dentro de la misma transacción** que importa el resultado (§6.2),
 
 ### 9.2 Función
 
+La tabla de puntos **no es aditiva**, así que la función no suma nada: compone la clave del patrón (`'110'` = acertar 1º y 2º) y la busca en `scoring_rules.points_by_pattern`.
+
 ```sql
 create function recalculate_race_scores(p_race_id uuid)
 returns integer
 language plpgsql
 security definer set search_path = public
 as $$
-declare v_rows integer; v_rules scoring_rules%rowtype;
+declare v_rows integer; v_tabla jsonb;
 begin
-  select sr.* into v_rules
+  select sr.points_by_pattern into v_tabla
   from scoring_rules sr join races r on r.season_id = sr.season_id
   where r.id = p_race_id;
 
@@ -984,11 +986,13 @@ begin
       and e.is_classified
       and e.position between 1 and 3
   ),
-  scored as (
+  -- Un acierto por posición, como tres banderas. No se suman: se concatenan
+  -- para formar la clave con la que se consulta la tabla de puntos.
+  aciertos as (
     select b.user_id,
-           sum(case when p.rider_id is not null
-                    then coalesce(v_rules.points_exact_position,1) else 0 end)::smallint as points,
-           count(p.rider_id)::smallint as exact_hits,
+           max(case when bp.position=1 and p.rider_id is not null then 1 else 0 end) as a1,
+           max(case when bp.position=2 and p.rider_id is not null then 1 else 0 end) as a2,
+           max(case when bp.position=3 and p.rider_id is not null then 1 else 0 end) as a3,
            jsonb_object_agg(bp.position::text, p.rider_id is not null) as breakdown
     from bets b
     join bet_picks bp on bp.bet_id = b.id
@@ -997,7 +1001,11 @@ begin
     group by b.user_id
   )
   insert into race_scores (race_id, user_id, points, exact_hits, breakdown, computed_at)
-  select p_race_id, user_id, points, exact_hits, breakdown, now() from scored
+  select p_race_id, a.user_id,
+         coalesce((v_tabla ->> (a.a1::text||a.a2::text||a.a3::text))::smallint, 0),
+         (a.a1 + a.a2 + a.a3)::smallint,
+         a.breakdown, now()
+  from aciertos a
   on conflict (race_id, user_id) do update
     set points = excluded.points,
         exact_hits = excluded.exact_hits,
@@ -1014,7 +1022,7 @@ end $$;
 - **Recalculable, no incremental.** Si MotoGP revisa un resultado horas después (sanción, apelación), basta volver a llamar a la función: el resultado es el mismo que si nunca hubiera existido el resultado previo. Un contador incremental haría imposible corregir sin auditoría manual.
 - **`race_scores` materializada, `season_standings` derivada.** Los puntos por carrera son caros de recalcular (join sobre todas las apuestas) y raramente cambian → se guardan. El total es una simple suma → se calcula al vuelo. Así nunca hay dos números que puedan contradecirse.
 - **Solo cuentan los clasificados.** Si el 3º es descalificado y sube el 4º, la API ya devuelve las posiciones corregidas al reimportar; el recálculo hace el resto.
-- **Sprint y carrera puntúan igual y por separado** (decisión 2), y ambas suman a la misma clasificación. Un GP puede dar de 0 a 6 puntos.
+- **La puntuación es por combinación y no es aditiva** (decisión 8, revisada): acertar 1º y 2º da 10, no los 7 de sumar sus valores sueltos. Un GP da de 0 a 15 puntos.
 - **`breakdown` en JSONB** alimenta el detalle visual "🥇✅ 🥈❌ 🥉✅" del histórico sin recalcular nada en el frontend.
 - **Carreras canceladas:** no generan `race_results`, luego no generan `race_scores`, y no cuentan como `races_played`. Sin casos especiales.
 
@@ -1230,7 +1238,7 @@ apps/web/
 │   └── fonts/
 ├── supabase/                              # (enlace al paquete compartido)
 ├── proxy.ts                               # ⚠️ Next 16: antes middleware.ts
-├── next.config.ts                         # + Serwist
+├── next.config.ts                         # cabeceras de seguridad y de sw.js
 ├── tailwind.config.ts · postcss.config.mjs
 ├── eslint.config.mjs · .prettierrc
 ├── tsconfig.json                          # strict + noUncheckedIndexedAccess
@@ -1321,17 +1329,17 @@ apps/sync/
 | Fase | Contenido | Entregable verificable |
 |---|---|---|
 | **0 — Fundación** ✅ | Monorepo, Next.js 16 + TS estricto + Tailwind 4, ESLint/Prettier con reglas de arquitectura, validación de entorno con Zod, CI | `format` + `lint` + `typecheck` + `build` en verde. Pendiente: `git init` y proyecto Supabase |
-| **1 — Base de datos** ✅ | 14 migraciones (§4), enums, índices, constraints, funciones, RLS, datos de referencia | Aplicadas y verificadas: `npm run db:verify` pasa 25/25, incluido que un usuario no ve la apuesta ajena antes del cierre. Pendiente: tipos TS generados (fase 2) |
-| **2 — Autenticación** | Registro, login, verificación, recuperación, trigger `handle_new_user`, hook de claim de rol, middleware, layouts protegidos | Ciclo completo de alta y recuperación desde el móvil |
-| **3 — Shell y datos de sólo lectura** | Layout móvil, bottom nav, calendario, detalle de carrera, ficha de piloto. Datos cargados a mano en la base para desarrollar sin sincronizador | Navegación completa con datos reales de una temporada |
-| **4 — Apuestas** | `place_bet`, formulario, selector de pilotos, cuenta atrás, edición mientras esté abierta, estado vacío/cerrado | Un usuario apuesta y edita desde el móvil; el cierre se respeta con reloj manipulado |
-| **5 — Resultados y puntuación** | `recalculate_race_scores`, pantalla de resultado, comparación apuesta/resultado, histórico personal | Cargando un resultado manualmente en la base, la clasificación cuadra |
-| **6 — Clasificación** | Vista de standings, desempates, evolución, realtime | Clasificación correcta y actualizada sin recargar |
+| **1 — Base de datos** ✅ | 16 migraciones (§4), enums, índices, constraints, funciones, RLS, datos de referencia | Aplicadas y verificadas: `npm run db:verify` pasa 36/36, incluido que un usuario no ve la apuesta ajena antes del cierre y que la puntuación por combinación no es aditiva |
+| **2 — Autenticación** ✅ | Registro, login, verificación, recuperación, trigger `handle_new_user`, hook de claim de rol, middleware, layouts protegidos | Ciclo completo de alta y recuperación desde el móvil |
+| **3 — Shell y datos de sólo lectura** ✅ | Layout móvil, bottom nav, calendario, detalle de carrera, ficha de piloto. Datos cargados a mano en la base para desarrollar sin sincronizador | Navegación completa con datos reales de una temporada |
+| **4 — Apuestas** ✅ | `place_bet`, formulario, selector de pilotos, cuenta atrás, edición mientras esté abierta, estado vacío/cerrado | Un usuario apuesta y edita desde el móvil; el cierre se respeta con reloj manipulado |
+| **5 — Resultados y puntuación** ✅ | `recalculate_race_scores`, pantalla de resultado, comparación apuesta/resultado, histórico personal | Cargando un resultado manualmente en la base, la clasificación cuadra |
+| **6 — Clasificación** ✅ | Vista de standings, desempates, evolución, realtime | Clasificación correcta y actualizada sin recargar |
 | **7a — Ampliar `motogp-client`** ✅ | Campos de `Event`, `Session`, `Circuit`, `Rider`, `Team` y método `get_event_sessions()` (§13) | 66 tests en verde; verificado contra la API real |
-| **7b — Sincronizador** ✅ | `apps/sync` con mappers y jobs `calendar`, `riders`, `results` y `backfill`; auditoría en `sync_runs`; workflows de Actions | **Temporada 2026 completa**: 22 circuitos, 22 GP, 177 sesiones, 44 carreras, 29 pilotos, 22 resultados oficiales y 476 líneas de clasificación **sin un solo piloto sin resolver**. Verificado línea a línea contra la API: 0 discrepancias. Idempotencia confirmada. Pendiente: disparo manual desde el panel de admin (fase 8) |
-| **8 — Administración** | Panel, gestión de usuarios y roles, apertura/cierre excepcional, revisión de resultados, historial de sync | El administrador opera sin tocar la base de datos |
-| **9 — PWA y pulido** | Serwist, manifest, iconos, offline del shell, prompt de instalación iOS/Android, animaciones, accesibilidad, Lighthouse | Instalable en Android e iPhone; Lighthouse PWA en verde |
-| **10 — Producción** | Dominio, backups, monitorización, Sentry, tests E2E del flujo crítico, documentación | Temporada real en marcha |
+| **7b — Sincronizador** ✅ | `apps/sync` con mappers y jobs `calendar`, `riders`, `results` y `backfill`; auditoría en `sync_runs`; workflows de Actions | **Temporada 2026 completa**, verificada línea a línea contra la API: 0 discrepancias e idempotencia confirmada. Un fallo real apareció en agosto con un piloto sustituto sin resolver — ver §14 |
+| **8 — Administración** ✅ | Panel, gestión de usuarios y roles, apertura/cierre excepcional, revisión de resultados, historial de sync | El administrador opera sin tocar la base de datos |
+| **9 — PWA y pulido** ✅ | `manifest.ts`, iconos generados por script, service worker propio (decisión 10), página offline, prompt de instalación iOS/Android | Instalada desde el móvil en `motogporra.vercel.app` |
+| **10 — Producción** 🔶 | Dominio, backups, monitorización, Sentry, tests E2E del flujo crítico, documentación | Temporada real en marcha |
 
 **Criterio de ordenación:** cada fase deja el sistema en un estado desplegable y demostrable. La base de datos va primero porque es la decisión más cara de revertir. El sincronizador va en la fase 7, no antes, porque hasta entonces se puede trabajar con datos cargados a mano — y así el diseño de las tablas ya está validado por uso real antes de escribir los mappers.
 
@@ -1546,4 +1554,4 @@ El diseño preveía `get_completed_race_results()`, que resuelve evento → cate
 - **Cambio de estado de una fase** → tabla de «Estado actual», y actualizar la fecha.
 - **Una regla que ya no va a cambiar** (convención, comando, trampa conocida) → **muévela a [CLAUDE.md](../CLAUDE.md)** y bórrala de aquí. Que un dato viva en dos sitios es garantía de que acabarán contradiciéndose.
 
-`scoring_rules` conserva la columna `points_podium_any` (hoy a 0) y admitiría un multiplicador por `kind` si algún día se quisiera que el sprint valga menos — pero **la regla vigente es 1 punto por posición acertada, igual en sprint y en carrera**. Verificado en la prueba de Mugello: cambiar la regla y recalcular altera los puntos, y revertirla los restaura.
+La regla vigente vive **entera** en `scoring_rules.points_by_pattern`, un JSONB de siete entradas. Cambiar cuánto vale una combinación es un `UPDATE` seguido de recalcular las carreras afectadas desde el panel — sin migración y sin tocar la función SQL.

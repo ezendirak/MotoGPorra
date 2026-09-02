@@ -1,8 +1,16 @@
 # MotoGPorra
 
-Porra anual de MotoGP: cada participante predice el podio (🥇🥈🥉) de cada sprint y cada carrera antes de que empiecen los entrenamientos oficiales. Al terminar la sesión, el resultado oficial se importa solo y las puntuaciones se recalculan sin intervención manual.
+Porra anual de MotoGP: cada participante predice el podio (🥇🥈🥉) de cada Gran Premio antes de que empiecen los entrenamientos oficiales. Al terminar la carrera, el resultado oficial se importa solo y las puntuaciones se recalculan sin intervención manual.
 
-**1 punto por cada posición acertada.** Sprint y carrera puntúan igual, así que un Gran Premio reparte de 0 a 6 puntos.
+**Puntúa la combinación, no cada acierto por separado:**
+
+| | | |
+|---|---|---|
+| 🥇🥈🥉 **15** | 🥇🥈· **10** | 🥇·🥉 **7** |
+| 🥇·· **5** | ·🥈🥉 **3** | ·🥈· **2** |
+| ··🥉 **1** | ··· **0** | |
+
+La tabla **no es aditiva**: acertar 1º y 2º vale 10, no los 7 que saldrían de sumar sus valores sueltos. Un Gran Premio reparte de 0 a 15 puntos.
 
 ## Arquitectura
 
@@ -19,7 +27,7 @@ Navegador (PWA) → Next.js en Vercel → Supabase (Auth · PostgreSQL · RLS)
 | Carpeta | Contenido |
 |---|---|
 | `apps/web` | Aplicación Next.js (App Router) + PWA |
-| `apps/sync` | Servicio de sincronización en Python *(fase 7)* |
+| `apps/sync` | Servicio de sincronización en Python |
 | `packages/motogp_client` | Librería que encapsula la API de MotoGP |
 | `supabase` | Migraciones, RLS y seed |
 | `docs` | [Diseño completo del sistema](docs/DESIGN.md) |
@@ -42,7 +50,9 @@ npm run dev
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
 | `npm run build` | Build de producción |
-| `npm run check` | Formato + lint + tipos |
+| `npm run check` | Formato + lint + tipos + tests |
+| `npm test` | Lógica pura, con el runner de Node |
+| `npm run db:verify` | 36 pruebas de esquema y RLS contra la base real |
 | `npm run format` | Aplica Prettier |
 
 ## Documentación
@@ -51,11 +61,16 @@ npm run dev
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | Reglas estables: stack, convenciones, comandos, seguridad y trampas conocidas de Next.js 16 y de la API de MotoGP |
 | [docs/DESIGN.md](docs/DESIGN.md) | Diseño completo y diario del proyecto: estado por fases, decisiones y por qué, esquema de base de datos y flujos |
+| [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md) | Pasos manuales de Vercel y Supabase, con las trampas que ya nos costaron un rato |
 
 Conviene leer el diseño antes de tocar el esquema.
 
 ## Estado
 
-Funciona de extremo a extremo en local: registro, apuestas, sincronización desde MotoGP y cálculo automático de puntuaciones. La temporada 2026 está importada (22 GP, 44 carreras apostables, 22 resultados oficiales).
+**En producción y en uso**: [motogporra.vercel.app](https://motogporra.vercel.app), instalable como app desde el móvil.
 
-Pendiente: PWA, despliegue en Vercel y panel de administración. Ver [estado detallado](docs/DESIGN.md#15-estado-actual-y-cómo-continuar).
+Funciona el ciclo completo — registro con correo propio, apuestas con cierre automático, importación de resultados desde MotoGP, puntuación y clasificación con refresco en vivo— más un panel de administración para roles, apertura excepcional de carreras y disparo manual del sincronizador. La temporada 2026 está importada: 22 GP, 177 sesiones, 30 pilotos y los resultados disputados hasta la fecha.
+
+Pendiente: monitorización y tests de navegador. Ver el [estado por fases](docs/DESIGN.md#estado-actual).
+
+Cómo desplegarlo desde cero: [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md).
