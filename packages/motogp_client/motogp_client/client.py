@@ -203,6 +203,22 @@ class MotoGPClient:
         """
         return self._riders.list(category=category)
 
+    def get_rider_detail(self, rider_id: str) -> Rider:
+        """Ficha completa de un piloto, con su historial de temporadas.
+
+        Es la vía para obtener las imágenes que la temporada en curso aún no
+        tiene publicadas (dorsal, moto, casco): ver
+        :meth:`~motogp_client.models.Rider.picture_url`.
+
+        Args:
+            rider_id: ``id`` del piloto, tal y como lo devuelve
+                :meth:`get_riders`.
+
+        Raises:
+            NotFoundError: Si el piloto no existe.
+        """
+        return self._riders.get(rider_id)
+
     def get_teams(self, category: str | None = None) -> list[Team]:
         """Todos los equipos, opcionalmente filtrados por categoría.
 

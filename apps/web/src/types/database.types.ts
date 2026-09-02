@@ -630,12 +630,14 @@ export type Database = {
           created_at: string
           first_name: string | null
           full_name: string
+          headshot_url: string | null
           id: string
           is_retired: boolean
           last_name: string | null
           motogp_legacy_id: number | null
           motogp_rider_id: string
           nickname: string | null
+          number_image_url: string | null
           photo_url: string | null
           start_year: number | null
           updated_at: string
@@ -648,12 +650,14 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           full_name: string
+          headshot_url?: string | null
           id?: string
           is_retired?: boolean
           last_name?: string | null
           motogp_legacy_id?: number | null
           motogp_rider_id: string
           nickname?: string | null
+          number_image_url?: string | null
           photo_url?: string | null
           start_year?: number | null
           updated_at?: string
@@ -666,12 +670,14 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           full_name?: string
+          headshot_url?: string | null
           id?: string
           is_retired?: boolean
           last_name?: string | null
           motogp_legacy_id?: number | null
           motogp_rider_id?: string
           nickname?: string | null
+          number_image_url?: string | null
           photo_url?: string | null
           start_year?: number | null
           updated_at?: string
@@ -1031,7 +1037,7 @@ export type Database = {
       result_status: 'provisional' | 'official'
       session_kind:
         'fp' | 'practice' | 'qualifying' | 'sprint' | 'race' | 'warmup' | 'other'
-      sync_job: 'calendar' | 'riders' | 'results' | 'backfill' | 'recalculate'
+      sync_job: 'calendar' | 'riders' | 'results' | 'backfill' | 'recalculate' | 'images'
       sync_state: 'running' | 'success' | 'failed' | 'partial'
     }
     CompositeTypes: {
@@ -1163,7 +1169,7 @@ export const Constants = {
       race_status: ['upcoming', 'open', 'closed', 'finished', 'cancelled'],
       result_status: ['provisional', 'official'],
       session_kind: ['fp', 'practice', 'qualifying', 'sprint', 'race', 'warmup', 'other'],
-      sync_job: ['calendar', 'riders', 'results', 'backfill', 'recalculate'],
+      sync_job: ['calendar', 'riders', 'results', 'backfill', 'recalculate', 'images'],
       sync_state: ['running', 'success', 'failed', 'partial'],
     },
   },

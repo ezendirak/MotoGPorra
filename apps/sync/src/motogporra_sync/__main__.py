@@ -2,6 +2,7 @@
 
     python -m motogporra_sync calendar
     python -m motogporra_sync riders
+    python -m motogporra_sync images
     python -m motogporra_sync all
 """
 
@@ -16,12 +17,13 @@ from motogp_client import MotoGPClient
 
 from .config import SyncConfig
 from .db import SupabaseClient
-from .jobs import sync_calendar, sync_results, sync_riders
+from .jobs import sync_calendar, sync_images, sync_results, sync_riders
 
 JOBS = {
     "calendar": sync_calendar,
     "riders": sync_riders,
     "results": sync_results,
+    "images": sync_images,
     # Reimporta también las carreras que ya tienen resultado: es lo que hay
     # que ejecutar si MotoGP revisa una clasificación por sanción.
     "backfill": lambda c, d, cfg: sync_results(c, d, cfg, backfill=True),
@@ -51,7 +53,12 @@ def main(argv: list[str] | None = None) -> int:
     # El orden importa: los pilotos van antes que cualquier cosa que los
     # referencie, para que un sustituto que debute ese mismo fin de semana no
     # rompa la reconciliación del resultado.
-    nombres = ["riders", "calendar", "results"] if args.job == "all" else [args.job]
+    # `images` va al final y después de `riders`: necesita las inscripciones de
+    # la temporada ya escritas para saber quién está activo. Es un no-op cuando
+    # no hay imágenes nuevas, así que no encarece la ejecución periódica.
+    nombres = (
+        ["riders", "calendar", "results", "images"] if args.job == "all" else [args.job]
+    )
 
     with MotoGPClient() as client, SupabaseClient(config) as db:
         for nombre in nombres:

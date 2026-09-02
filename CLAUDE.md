@@ -29,6 +29,8 @@ Navegador (PWA) → Next.js en Vercel → Supabase (Auth · PostgreSQL · RLS)
 | Next.js → MotoGP | — | **Todo.** No existe cliente HTTP a MotoGP en `apps/web` |
 | Python → MotoGP | Solo vía `motogp_client` | Llamadas HTTP propias |
 
+**Las imágenes no son excepción.** Nada apunta a `photos.motogp.com`: el job `images` las copia al bucket `rider-images` de Supabase Storage y la web sirve siempre desde ahí. Como ya llegan optimizadas, se pintan con `<img>` y no con `next/image`.
+
 ---
 
 ## Stack
@@ -39,7 +41,7 @@ Next.js 16.2 (App Router, Turbopack) · React 19.2 · TypeScript estricto · Tai
 
 ```
 apps/web/                 Next.js + PWA
-apps/sync/                Sincronización (Python)
+apps/sync/                Sincronización (Python), imágenes incluidas
 packages/motogp_client/   Librería que encapsula la API de MotoGP
 supabase/migrations/      Esquema y RLS
 docs/DESIGN.md            Diseño y diario del proyecto
@@ -58,7 +60,7 @@ npx supabase gen types typescript --linked > apps/web/src/types/database.types.t
 
 npm run icons --workspace=web   # regenera los PNG de la PWA desde el SVG del script
 
-.venv/Scripts/python -m motogporra_sync <riders|calendar|results|backfill|all>
+.venv/Scripts/python -m motogporra_sync <riders|calendar|results|images|backfill|all>
 cd packages/motogp_client && ../../.venv/Scripts/python -m pytest -q
 ```
 
@@ -128,6 +130,9 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 | Estado de clasificación | Solo `INSTND`/`OUTSTND`. **No** diferencia DNF, DNS ni DSQ |
 | Tiempos | Texto (`'40:53.148'`), no milisegundos |
 | Pilotos | `/riders` devuelve más que la parrilla (29 vs 22); filtrar por `is_active` |
+| **Imágenes de piloto** | El recorte de estudio pesa **3,8 MB** y `photos.motogp.com` **ignora** `?width=`, `?w=`, `?tr=w-`… Hay que reescalar antes de servir. Lo hace el job `images` y el resultado va al bucket `rider-images` |
+| Ficha de piloto | `GET /riders/{id}` trae `career` (imágenes de cada temporada) pero **no** `current_career_step`. La temporada vigente se deduce de `career` |
+| Herencia de dorsal | El dorsal de una temporada anterior solo vale si el **número coincide** con el actual: Bagnaia llevó el 1 en 2024 y hoy el 63 |
 
 ## Errores que ya cometimos una vez
 

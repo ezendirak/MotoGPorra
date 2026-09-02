@@ -45,3 +45,23 @@ class RidersEndpoint:
             for rider in riders
             if rider.category_name and rider.category_name.strip().casefold() == target
         ]
+
+    def get(self, rider_id: str) -> Rider:
+        """Ficha completa de un piloto (``GET /v1/riders/{id}``).
+
+        Frente al listado, añade ``career``: el historial temporada a
+        temporada, cada una con su equipo, su dorsal y **sus imágenes**. Es la
+        única vía de recuperar el dorsal, la moto o el casco de un piloto cuya
+        temporada en curso todavía no los tiene publicados.
+
+        A cambio no trae ``current_career_step``, así que el modelo deduce la
+        temporada vigente desde ``career`` (ver :attr:`Rider.current_step`).
+
+        Args:
+            rider_id: ``id`` del piloto, tal y como lo devuelve :meth:`list`.
+
+        Raises:
+            NotFoundError: Si el piloto no existe.
+        """
+        raw: dict[str, Any] = self._client._get(f"v1/riders/{rider_id}")
+        return Rider.model_validate(raw)

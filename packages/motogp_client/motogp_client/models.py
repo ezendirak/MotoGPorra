@@ -262,11 +262,55 @@ class TeamRef(BaseModel):
     category: Category | None = None
 
 
-class CareerStep(BaseModel):
-    """Temporada/categoría/equipo actual de un piloto.
+class PicturePair(BaseModel):
+    """Par de imágenes (principal y secundaria) de un mismo tipo.
 
-    Corresponde a ``current_career_step`` en la respuesta real de
-    ``GET /riders`` (ver fuente en la docstring de :class:`Rider`).
+    La API agrupa así ``profile``, ``bike`` y ``helmet``. En todas las
+    respuestas medidas (MotoGP 2026) ``secondary`` venía siempre a ``null``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    main: str | None = None
+    secondary: str | None = None
+
+
+class RiderPictures(BaseModel):
+    """Imágenes de un piloto en una temporada concreta.
+
+    Forma verificada contra respuestas reales de ``GET /v1/riders`` y
+    ``GET /v1/riders/{id}`` (temporada 2026). Cobertura medida sobre los 22
+    titulares de MotoGP 2026:
+
+    - ``profile.main``: 22/22. Recorte de estudio de cuerpo entero, PNG RGBA
+      de 1920×2883 y **~3,8 MB**. Es enorme y ``photos.motogp.com`` NO acepta
+      parámetros de redimensionado (``?width=``, ``?w=``, ``?tr=w-``... se
+      ignoran y devuelven el original). Hay que redimensionar antes de servirlo.
+    - ``number``: 4/22 en la temporada en curso. Es el dorsal dibujado con la
+      tipografía y los colores del piloto (PNG RGBA 192×119, ~7 KB): lo más
+      parecido a un logotipo personal que ofrece la API.
+    - ``bike`` y ``helmet``: 3/22. Se van publicando durante la temporada.
+    - ``portrait``: 0/22 en 2026, aunque sí existe en temporadas anteriores.
+
+    Las que faltan casi siempre están en una temporada anterior del piloto,
+    accesible por ``GET /v1/riders/{id}``. Ver :meth:`Rider.picture_url`.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    profile: PicturePair | None = None
+    bike: PicturePair | None = None
+    helmet: PicturePair | None = None
+    number: str | None = None
+    portrait: str | None = None
+
+
+class CareerStep(BaseModel):
+    """Temporada/categoría/equipo de un piloto.
+
+    Corresponde a ``current_career_step`` en la respuesta de ``GET /riders``
+    y a cada entrada de ``career`` en la de ``GET /riders/{id}`` (ver fuente
+    en la docstring de :class:`Rider`).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -277,6 +321,7 @@ class CareerStep(BaseModel):
     team: TeamRef | None = None
     category: Category | None = None
     current: bool | None = None
+    pictures: RiderPictures | None = None
 
 
 class Rider(BaseModel):
@@ -307,6 +352,11 @@ class Rider(BaseModel):
     legacy_id: int | None = None
     country: CountryRef | None = None
     current_career_step: CareerStep | None = None
+    """Solo lo devuelve el LISTADO (``GET /riders``); en el detalle no existe."""
+    career: list[CareerStep] = Field(default_factory=list)
+    """Historial completo, temporada a temporada. Solo lo devuelve el DETALLE
+    (``GET /riders/{id}``), y es donde viven las imágenes que la temporada en
+    curso todavía no ha publicado. Ver :meth:`picture_url`."""
 
     # Campos confirmados en la respuesta real de GET /v1/riders.
     birth_date: date | None = None
@@ -324,20 +374,37 @@ class Rider(BaseModel):
         return joined or None
 
     @property
+    def current_step(self) -> CareerStep | None:
+        """Paso de carrera vigente, venga del listado o del detalle.
+
+        El listado lo da en ``current_career_step`` y el detalle no: allí hay
+        que buscarlo dentro de ``career``. Todo lo que dependa de la temporada
+        en curso pasa por aquí para que el mismo modelo sirva a los dos
+        endpoints.
+        """
+        if self.current_career_step is not None:
+            return self.current_career_step
+        for step in self.career:
+            if step.current:
+                return step
+        return None
+
+    @property
     def category_name(self) -> str | None:
-        step = self.current_career_step
+        step = self.current_step
         return step.category.name if step and step.category else None
 
     @property
     def team_name(self) -> str | None:
-        step = self.current_career_step
+        step = self.current_step
         if step is None:
             return None
         return step.sponsored_team or (step.team.name if step.team else None)
 
     @property
     def number(self) -> int | None:
-        return self.current_career_step.number if self.current_career_step else None
+        step = self.current_step
+        return step.number if step else None
 
     @property
     def is_active(self) -> bool:
@@ -350,8 +417,58 @@ class Rider(BaseModel):
         """
         if self.retired:
             return False
-        step = self.current_career_step
+        step = self.current_step
         return bool(step and step.current)
+
+    # -- imágenes ----------------------------------------------------------
+
+    def picture_url(self, kind: str, *, fallback: bool = True) -> str | None:
+        """URL de una imagen del piloto: ``profile``, ``number``, ``bike``,
+        ``helmet`` o ``portrait``.
+
+        Busca primero en la temporada en curso. Si no está y ``fallback`` es
+        cierto, baja por ``career`` de la temporada más reciente a la más
+        antigua: MotoGP publica los recursos gráficos a lo largo del año y en
+        pretemporada solo hay foto de estudio. Con este rebusque la cobertura
+        de dorsal, moto y casco pasa de 3-4 pilotos a 21 de 22.
+
+        **El dorsal exige además que el número coincida con el actual.** Si no,
+        Bagnaia heredaría el «1» de campeón de 2024 en vez de su 63, y Moreira
+        el 10 de Moto2 en vez de su 11. Los dos casos son reales, medidos.
+
+        Args:
+            kind: Tipo de imagen.
+            fallback: Permitir recurrir a temporadas anteriores.
+
+        Returns:
+            La URL, o ``None`` si el piloto no tiene esa imagen en ninguna
+            temporada utilizable.
+        """
+        actual = self.current_step
+        directa = self._picture_of(actual, kind)
+        if directa or not fallback:
+            return directa
+
+        numero_actual = actual.number if actual else None
+        for step in sorted(self.career, key=lambda s: -(s.season or 0)):
+            if step is actual:
+                continue
+            if kind == "number" and step.number != numero_actual:
+                continue
+            url = self._picture_of(step, kind)
+            if url:
+                return url
+        return None
+
+    @staticmethod
+    def _picture_of(step: CareerStep | None, kind: str) -> str | None:
+        pictures = step.pictures if step else None
+        if pictures is None:
+            return None
+        valor = getattr(pictures, kind, None)
+        if isinstance(valor, PicturePair):
+            return valor.main
+        return valor if isinstance(valor, str) else None
 
     @property
     def raw(self) -> dict[str, Any]:

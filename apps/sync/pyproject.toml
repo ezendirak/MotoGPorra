@@ -6,6 +6,9 @@ requires-python = ">=3.12"
 dependencies = [
     "motogp-client",
     "requests>=2.32",
+    # Recorta y reescala las fotos de piloto antes de subirlas: el original de
+    # MotoGP pesa ~3,8 MB y su CDN no sabe redimensionar. Ver images.py.
+    "pillow>=11",
 ]
 
 [project.optional-dependencies]

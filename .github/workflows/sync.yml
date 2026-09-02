@@ -18,7 +18,7 @@ on:
         required: true
         default: 'results'
         type: choice
-        options: [results, calendar, riders, backfill, all]
+        options: [results, calendar, riders, images, backfill, all]
       triggered_by:
         # Lo rellena el panel de administración con el UUID del administrador,
         # y queda en `sync_runs.triggered_by`. Vacío = ejecución automática,

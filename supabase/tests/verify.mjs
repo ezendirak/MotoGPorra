@@ -140,6 +140,27 @@ try {
   const motogp = cats.find((c) => c.code === 'MOTOGP')
   const catId = (await rest('categories?select=id&code=eq.MOTOGP')).json[0].id
 
+  // Las imágenes de piloto viven en Storage, no en la base. El bucket TIENE
+  // que ser público: si dejara de serlo, la app seguiría guardando URLs que
+  // devuelven 400 y los avatares desaparecerían sin un solo error en el log.
+  const bucket = await fetch(`${URL}/storage/v1/bucket/rider-images`, { headers: svc })
+  const bucketJson = bucket.ok ? await bucket.json() : null
+  check(bucketJson?.public === true, 'el bucket rider-images existe y es público')
+
+  // Una imagen cualquiera tiene que servirse sin credenciales: es como la pide
+  // el navegador de un participante.
+  const conFoto = (await rest('riders?select=headshot_url&headshot_url=not.is.null&limit=1'))
+    .json
+  if (conFoto?.length) {
+    const foto = await fetch(conFoto[0].headshot_url)
+    check(
+      foto.ok && foto.headers.get('content-type')?.includes('image/webp'),
+      `un avatar se descarga anónimo y es WebP (${foto.status})`,
+    )
+  } else {
+    check(true, 'sin avatares subidos todavía: nada que comprobar')
+  }
+
   // ---------------------------------------------------------------------
   console.log('\n[2] Trigger de alta de usuario')
   const stamp = Date.now()

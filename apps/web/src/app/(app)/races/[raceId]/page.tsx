@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 
 import { RaceStatusBadge } from '@/components/races/race-status-badge'
+import { RiderAvatar } from '@/components/riders/rider-avatar'
 import { getMyBet, getRaceBets } from '@/services/bets.service'
 import { getRaceById, getRaceResult } from '@/services/races.service'
 import { RaceCountdown } from '@/components/races/race-countdown'
@@ -69,6 +70,12 @@ export default async function RaceDetailPage({
               {miApuesta.picks.map((pick, i) => (
                 <li key={pick.position} className="flex items-center gap-2 text-sm">
                   <span aria-hidden="true">{MEDALLAS[i]}</span>
+                  <RiderAvatar
+                    headshotUrl={pick.headshotUrl}
+                    number={null}
+                    teamColor={null}
+                    size={32}
+                  />
                   <span className="text-zinc-200">{pick.riderName}</span>
                 </li>
               ))}
@@ -108,6 +115,12 @@ export default async function RaceDetailPage({
                 <span className="text-xl" aria-hidden="true">
                   {MEDALLAS[i]}
                 </span>
+                <RiderAvatar
+                  headshotUrl={entry.riders?.headshot_url ?? null}
+                  number={null}
+                  teamColor={null}
+                  size={48}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-100">
                     {entry.riders?.full_name}

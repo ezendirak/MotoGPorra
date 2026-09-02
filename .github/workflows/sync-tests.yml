@@ -38,4 +38,4 @@ jobs:
         run: python -m pytest -q
 
       - name: Comprobar que el sincronizador importa
-        run: python -c "import motogporra_sync.jobs, motogporra_sync.mappers"
+        run: python -c "import motogporra_sync.jobs, motogporra_sync.mappers, motogporra_sync.images, motogporra_sync.storage"

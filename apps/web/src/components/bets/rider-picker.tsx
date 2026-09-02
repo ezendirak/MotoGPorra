@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { RiderAvatar, RiderNumber } from '@/components/riders/rider-avatar'
 import type { SeasonRider } from '@/services/riders.service'
 
 /**
@@ -114,13 +115,12 @@ export function RiderPicker({
                     elegido ? 'bg-red-600/15 ring-1 ring-red-600/50' : '',
                   ].join(' ')}
                 >
-                  <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-zinc-950"
-                    style={{ backgroundColor: rider.teamColor ?? '#a1a1aa' }}
-                    aria-hidden="true"
-                  >
-                    {rider.number ?? '—'}
-                  </span>
+                  <RiderAvatar
+                    headshotUrl={rider.headshotUrl}
+                    number={rider.number}
+                    teamColor={rider.teamColor}
+                    size={44}
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-zinc-100">
                       {rider.fullName}
@@ -129,8 +129,15 @@ export function RiderPicker({
                       {rider.team ?? 'Sin equipo'}
                     </span>
                   </span>
-                  {bloqueado && (
+                  {bloqueado ? (
                     <span className="shrink-0 text-[11px] text-zinc-500">Ya elegido</span>
+                  ) : (
+                    <RiderNumber
+                      numberImageUrl={rider.numberImageUrl}
+                      number={rider.number}
+                      height={22}
+                      className="shrink-0"
+                    />
                   )}
                 </button>
               </li>

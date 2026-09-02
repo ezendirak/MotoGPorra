@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 
+import { RiderAvatar, RiderNumber } from '@/components/riders/rider-avatar'
 import { Alert } from '@/components/ui/alert'
 import { SubmitButton } from '@/components/ui/submit-button'
 import { placeBet } from '@/lib/bets/actions'
@@ -64,13 +65,12 @@ export function BetForm({
 
                   {rider ? (
                     <>
-                      <span
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-zinc-950"
-                        style={{ backgroundColor: rider.teamColor ?? '#a1a1aa' }}
-                        aria-hidden="true"
-                      >
-                        {rider.number ?? '—'}
-                      </span>
+                      <RiderAvatar
+                        headshotUrl={rider.headshotUrl}
+                        number={rider.number}
+                        teamColor={rider.teamColor}
+                        size={56}
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium text-zinc-100">
                           {rider.fullName}
@@ -79,6 +79,12 @@ export function BetForm({
                           {rider.team ?? 'Sin equipo'}
                         </span>
                       </span>
+                      <RiderNumber
+                        numberImageUrl={rider.numberImageUrl}
+                        number={rider.number}
+                        height={26}
+                        className="shrink-0"
+                      />
                     </>
                   ) : (
                     <span className="flex-1 text-sm text-zinc-500">

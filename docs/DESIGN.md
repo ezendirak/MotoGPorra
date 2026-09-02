@@ -1527,6 +1527,31 @@ No afectaba solo a la auditoría: la home anunciaba **la hora de la carrera dos 
 
 > Lección general: **una función de formato no es pura respecto al entorno.** `Intl` y `new Date()` leen la zona del proceso, así que el mismo código da resultados distintos en tu máquina y en el servidor. En cuanto una fecha se formatee en servidor, la zona hay que fijarla.
 
+### Hallazgo del 02/09/2026: la API sí da fotos, pero no se pueden enlazar
+
+La migración de `riders` afirmaba que «la API de /riders NO devuelve foto» y dejaba `photo_url` nullable sin usar, con un avatar de dorsal sobre el color del equipo como sustituto. Era falso, y el motivo de que nadie lo detectara es que el modelo `Rider` de la librería no llegaba a modelar el bloque `pictures`.
+
+Lo que hay de verdad, medido contra la API en vivo sobre los 22 titulares de MotoGP 2026:
+
+| Imagen | Campo | Cobertura |
+|---|---|---|
+| Recorte de estudio de cuerpo entero | `pictures.profile.main` | 22/22 |
+| Dorsal con la tipografía del piloto | `pictures.number` | 4/22 en la temporada en curso |
+| Moto y casco | `pictures.bike` / `pictures.helmet` | 3/22 |
+| Retrato de busto | `pictures.portrait` | 0/22 |
+
+Tres cosas que no eran obvias y que decidieron el diseño:
+
+1. **El original pesa 3,8 MB** (PNG RGBA de 1920×2883) y `photos.motogp.com` **ignora todo parámetro de redimensionado**: `?width=`, `?w=`, `?tr=w-` y `?format=webp` devuelven byte por byte el mismo fichero. Servir la parrilla entera enlazada serían 80 MB en un móvil.
+2. **Lo que falta en la temporada en curso casi siempre está en una anterior.** `GET /riders/{id}` trae `career`, con las imágenes de cada año; bajando por él, la cobertura de dorsal pasa de 4 a 21 de 22. Ese endpoint, en cambio, **no** devuelve `current_career_step` — la temporada vigente hay que deducirla de `career`.
+3. **El dorsal no se puede heredar sin más.** Bagnaia corrió con el 1 en 2024 y hoy lleva el 63; Moreira llevaba el 10 en Moto2 y hoy el 11. Sin comprobar que el número del año del que se hereda coincide con el actual, la porra enseñaría dorsales equivocados a dos pilotos. La regla vive en `Rider.picture_url()`.
+
+Enlazar directamente estaba descartado además por la regla que gobierna el proyecto: la aplicación web no habla con MotoGP. Así que el job **`images`** descarga el original, recorta, reescala a WebP y sube el resultado al bucket público `rider-images`; la base guarda la URL de Storage y nunca la de MotoGP.
+
+El recorte de cara se calcula, no se elige a mano: se toma la caja del contenido no transparente y un cuadrado del 72 % del ancho del cuerpo anclado arriba. Funciona porque las fotos de estudio están encuadradas de forma casi idéntica (el cuerpo siempre entre x=533 y x=1387 de 1920). Comprobado uno a uno en los 22: con el 55 % se cortaba la barbilla y con el 85 % la cara quedaba diminuta.
+
+El coste queda en **~12 KB por avatar y ~35 KB por cuerpo entero**, menos de 1 MB para la parrilla entera. Y el job es idempotente de verdad: el nombre del fichero subido lleva el hash de la URL de origen, así que una segunda ejecución hace 22 peticiones de JSON, **cero descargas** y cero escrituras. Es lo que permite meterlo en `all` sin encarecer el cron semanal.
+
 ### Hallazgo de la Fase 10: el proxy se comía el `robots.txt`
 
 El matcher de `proxy.ts` excluye por nombre `manifest.webmanifest`, `sw.js` e `icons/`, y por extensión las imágenes y las fuentes. `robots.txt` no encajaba en ninguna de las dos listas, así que el proxy lo interceptaba y, al no haber sesión, devolvía un 307 a `/login`: un buscador nunca habría llegado a leer el «no indexes».

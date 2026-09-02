@@ -1,6 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 
-export type BetPick = { position: number; riderId: string; riderName: string }
+export type BetPick = {
+  position: number
+  riderId: string
+  riderName: string
+  headshotUrl: string | null
+  numberImageUrl: string | null
+}
 
 export type Bet = {
   id: string
@@ -26,7 +32,9 @@ export async function getMyBet(raceId: string): Promise<Bet | null> {
 
   const { data, error } = await supabase
     .from('bets')
-    .select('id,user_id,bet_picks(position,rider_id,riders(full_name))')
+    .select(
+      'id,user_id,bet_picks(position,rider_id,riders(full_name,headshot_url,number_image_url))',
+    )
     .eq('race_id', raceId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -55,7 +63,9 @@ export async function getRaceBets(raceId: string): Promise<Bet[]> {
 
   const { data, error } = await supabase
     .from('bets')
-    .select('id,user_id,bet_picks(position,rider_id,riders(full_name))')
+    .select(
+      'id,user_id,bet_picks(position,rider_id,riders(full_name,headshot_url,number_image_url))',
+    )
     .eq('race_id', raceId)
 
   if (error) throw new Error(`No se pudieron cargar las apuestas: ${error.message}`)
@@ -88,7 +98,11 @@ export async function getRaceBets(raceId: string): Promise<Bet[]> {
 type RawPick = {
   position: number
   rider_id: string
-  riders: { full_name: string } | null
+  riders: {
+    full_name: string
+    headshot_url: string | null
+    number_image_url: string | null
+  } | null
 }
 
 function toPicks(picks: RawPick[] | null): BetPick[] {
@@ -97,6 +111,8 @@ function toPicks(picks: RawPick[] | null): BetPick[] {
       position: p.position,
       riderId: p.rider_id,
       riderName: p.riders?.full_name ?? 'Piloto',
+      headshotUrl: p.riders?.headshot_url ?? null,
+      numberImageUrl: p.riders?.number_image_url ?? null,
     }))
     .sort((a, b) => a.position - b.position)
 }

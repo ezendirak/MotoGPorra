@@ -16,9 +16,10 @@ from typing import Any
 from motogp_client import MotoGPClient
 from motogp_client.exceptions import MotoGPError, NotFoundError
 
-from . import mappers
+from . import images, mappers
 from .config import SyncConfig
 from .db import SupabaseClient
+from .storage import SupabaseStorage
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +496,149 @@ def sync_calendar(
             state="partial" if sin_sesiones else "success",
             stats=stats,
         )
+        return stats
+
+    except Exception as exc:
+        _finish_run(db, run_id, state="failed", error=f"{type(exc).__name__}: {exc}")
+        raise
+
+
+# ---------------------------------------------------------------------------
+# Imágenes de piloto.
+# ---------------------------------------------------------------------------
+
+BUCKET_IMAGENES = "rider-images"
+
+# Qué se guarda de cada piloto: tipo de imagen en la API -> (prefijo del
+# fichero, columna de `riders`, transformación). El recorte de cabeza sale de
+# la MISMA foto de cuerpo entero, así que comparte origen con ella.
+DERIVADAS = (
+    ("profile", "perfil", "photo_url", images.cuerpo_entero),
+    ("profile", "cara", "headshot_url", images.cabeza),
+    ("number", "dorsal", "number_image_url", images.dorsal),
+)
+
+
+def sync_images(
+    client: MotoGPClient, db: SupabaseClient, config: SyncConfig
+) -> dict[str, Any]:
+    """Descarga las imágenes de los pilotos activos y las sube a Storage.
+
+    La aplicación web nunca habla con MotoGP: por eso las fotos no se enlazan,
+    se copian. Y no se copian tal cual, porque el recorte de estudio original
+    pesa ~3,8 MB y photos.motogp.com no sabe reescalar (ver `images.py`).
+
+    Idempotente y barato de repetir: el nombre del fichero subido lleva el hash
+    de la URL de origen, así que una imagen que no ha cambiado se reconoce sin
+    descargarla. Solo la primera ejecución baja de verdad los ~85 MB de
+    originales; las siguientes son 22 peticiones de JSON y ninguna descarga.
+
+    Un piloto sin imagen NO es un error: MotoGP publica el dorsal a lo largo de
+    la temporada y hay debutantes que no lo tienen en ninguna. La interfaz cae
+    en el dorsal sobre el color del equipo, que es lo que había antes.
+    """
+    season = db.get_active_season()
+    category_id = db.get_category_id(config.category)
+    run_id = _start_run(db, "images", season["id"], config.triggered_by)
+
+    try:
+        inscritos = db.select(
+            "rider_season_entries",
+            columns=(
+                "riders(id,motogp_rider_id,full_name,"
+                "photo_url,headshot_url,number_image_url)"
+            ),
+            filters={
+                "season_id": f"eq.{season['id']}",
+                "category_id": f"eq.{category_id}",
+                "is_active": "eq.true",
+            },
+        )
+        pilotos = [fila["riders"] for fila in inscritos if fila.get("riders")]
+        logger.info("%d pilotos activos que revisar", len(pilotos))
+
+        descargadas = 0
+        actualizados = 0
+        sin_dorsal: list[str] = []
+        esperadas: set[str] = set()
+
+        with SupabaseStorage(config) as storage:
+            for piloto in pilotos:
+                motogp_id = piloto["motogp_rider_id"]
+
+                # El detalle trae el historial completo, y con él las imágenes
+                # que la temporada en curso aún no ha publicado. Es una
+                # petición por piloto: 22 respuestas de JSON, nada caro.
+                try:
+                    ficha = client.get_rider_detail(motogp_id)
+                except (MotoGPError, NotFoundError) as exc:
+                    logger.warning("Sin ficha de %s: %s", piloto["full_name"], exc)
+                    continue
+
+                if ficha.picture_url("number") is None:
+                    sin_dorsal.append(piloto["full_name"])
+
+                cambios: dict[str, Any] = {}
+                originales: dict[str, bytes] = {}
+
+                for tipo, prefijo, columna, transformar in DERIVADAS:
+                    origen = ficha.picture_url(tipo)
+                    if origen is None:
+                        continue
+
+                    ruta = f"{motogp_id}/{prefijo}-{images.hash_origen(origen)}.webp"
+                    esperadas.add(ruta)
+
+                    # La URL guardada ya termina en esta ruta: misma imagen de
+                    # origen, mismo fichero subido. No hay nada que hacer.
+                    if (piloto.get(columna) or "").endswith(ruta):
+                        continue
+
+                    try:
+                        if origen not in originales:
+                            originales[origen] = images.descargar(origen)
+                            descargadas += 1
+                        publica = storage.upload(
+                            BUCKET_IMAGENES,
+                            ruta,
+                            transformar(originales[origen]),
+                            content_type="image/webp",
+                        )
+                    except images.ImagenNoDescargable as exc:
+                        # Una foto rota no puede tumbar la sincronización de
+                        # los otros 21 pilotos.
+                        logger.warning(
+                            "Imagen '%s' de %s: %s", tipo, piloto["full_name"], exc
+                        )
+                        continue
+
+                    cambios[columna] = publica
+
+                if cambios:
+                    db.update("riders", {"id": f"eq.{piloto['id']}"}, cambios)
+                    actualizados += 1
+                    logger.info(
+                        "%s: %s", piloto["full_name"], ", ".join(sorted(cambios))
+                    )
+
+            # Limpieza de versiones viejas. Cuando MotoGP publica la foto de la
+            # temporada nueva cambia la URL, cambia el hash y el fichero
+            # anterior queda huérfano: nadie lo referencia y nadie lo borraría.
+            huerfanas = [
+                ruta
+                for ruta in storage.list(BUCKET_IMAGENES)
+                if ruta not in esperadas
+            ]
+            storage.remove(BUCKET_IMAGENES, huerfanas)
+
+        stats = {
+            "pilotos": len(pilotos),
+            "descargadas": descargadas,
+            "actualizados": actualizados,
+            "huerfanas_borradas": len(huerfanas),
+            "sin_dorsal": sin_dorsal,
+        }
+        _finish_run(db, run_id, state="success", stats=stats)
         return stats
 
     except Exception as exc:

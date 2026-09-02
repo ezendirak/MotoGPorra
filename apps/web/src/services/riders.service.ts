@@ -8,6 +8,10 @@ export type SeasonRider = {
   team: string | null
   teamColor: string | null
   countryCode: string | null
+  /** Avatar cuadrado de cabeza y hombros. `null` hasta que el sync lo suba. */
+  headshotUrl: string | null
+  /** Dorsal con la tipografía del piloto. `null` si MotoGP no lo publica. */
+  numberImageUrl: string | null
 }
 
 /**
@@ -26,7 +30,7 @@ export async function getSeasonRiders(
   const { data, error } = await supabase
     .from('rider_season_entries')
     .select(
-      'number,sponsored_team,riders(id,full_name,last_name,country_code),teams(name,color)',
+      'number,sponsored_team,riders(id,full_name,last_name,country_code,headshot_url,number_image_url),teams(name,color)',
     )
     .eq('season_id', seasonId)
     .eq('category_id', categoryId)
@@ -45,5 +49,7 @@ export async function getSeasonRiders(
       team: row.sponsored_team ?? row.teams?.name ?? null,
       teamColor: row.teams?.color ?? null,
       countryCode: row.riders!.country_code,
+      headshotUrl: row.riders!.headshot_url,
+      numberImageUrl: row.riders!.number_image_url,
     }))
 }

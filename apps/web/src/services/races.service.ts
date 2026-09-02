@@ -63,7 +63,13 @@ export type ResultEntry = {
   gap_to_first: string | null
   championship_points: number | null
   team_name: string | null
-  riders: { id: string; full_name: string; country_code: string | null } | null
+  riders: {
+    id: string
+    full_name: string
+    country_code: string | null
+    headshot_url: string | null
+    number_image_url: string | null
+  } | null
 }
 
 /** Clasificación oficial de una carrera, ordenada por posición. */
@@ -82,7 +88,7 @@ export async function getRaceResult(raceId: string): Promise<ResultEntry[]> {
   const { data, error } = await supabase
     .from('race_result_entries')
     .select(
-      'position,is_classified,total_time,gap_to_first,championship_points,team_name,riders(id,full_name,country_code)',
+      'position,is_classified,total_time,gap_to_first,championship_points,team_name,riders(id,full_name,country_code,headshot_url,number_image_url)',
     )
     .eq('race_result_id', header.id)
     // Los no clasificados van al final: `position` es null y NULLS LAST lo

@@ -3,7 +3,14 @@ import 'server-only'
 import { getServerEnv } from '@/lib/config/env.server'
 
 /** Los mismos valores que acepta el input `job` de `sync.yml`. */
-export const TRABAJOS = ['results', 'calendar', 'riders', 'backfill', 'all'] as const
+export const TRABAJOS = [
+  'results',
+  'calendar',
+  'riders',
+  'images',
+  'backfill',
+  'all',
+] as const
 export type TrabajoSync = (typeof TRABAJOS)[number]
 
 /** Fichero del workflow, tal cual se llama en `.github/workflows/`. */

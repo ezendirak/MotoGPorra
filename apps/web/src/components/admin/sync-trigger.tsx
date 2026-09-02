@@ -28,9 +28,14 @@ const TRABAJOS = [
   },
   { valor: 'riders', etiqueta: 'Pilotos', ayuda: 'Parrilla, equipos y dorsales' },
   {
+    valor: 'images',
+    etiqueta: 'Fotos',
+    ayuda: 'Retratos y dorsales. Solo baja lo que MotoGP haya publicado nuevo',
+  },
+  {
     valor: 'all',
     etiqueta: 'Todo',
-    ayuda: 'Pilotos, calendario y resultados, en ese orden',
+    ayuda: 'Pilotos, calendario, resultados y fotos, en ese orden',
   },
   {
     valor: 'backfill',
