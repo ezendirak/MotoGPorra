@@ -44,7 +44,7 @@ export default async function HomePage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-medium tracking-wide text-red-500 uppercase">
-                Próxima {next.kind === 'sprint' ? 'sprint' : 'carrera'}
+                Próxima carrera
               </p>
               <h2 className="mt-1 text-lg leading-tight font-bold text-white">
                 {next.event_name}
@@ -113,9 +113,7 @@ export default async function HomePage() {
                   <p className="truncate text-sm font-medium text-zinc-200">
                     {race.circuit_name}
                   </p>
-                  <p className="text-xs text-zinc-500">
-                    {race.kind === 'sprint' ? 'Sprint' : 'Carrera'} · Ronda {race.round}
-                  </p>
+                  <p className="text-xs text-zinc-500">Ronda {race.round}</p>
                 </div>
                 <span className="shrink-0 text-xs text-zinc-500">
                   {formatShortDate(race.scheduled_at)}

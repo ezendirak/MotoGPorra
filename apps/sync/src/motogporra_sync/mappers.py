@@ -106,7 +106,10 @@ def map_session(
         "kind": session_kind(session),
         # Ya viene en UTC: no hay conversión que pueda salir mal.
         "scheduled_at": _iso(session.date),
-        "is_bettable": session.code in ("SPR", "RAC"),
+        # Solo la carrera del domingo es apostable: el sprint se retiró de la
+        # porra (decisión 2, revisada). La sesión SPR se sigue guardando —es
+        # parte del fin de semana— pero no genera carrera ni apuesta.
+        "is_bettable": session.code == "RAC",
     }
 
 
@@ -124,7 +127,9 @@ def map_race(
         "event_id": event_id,
         "category_id": category_id,
         "session_id": session_id,
-        "kind": "sprint" if session.code == "SPR" else "race",
+        # `kind` se conserva en el esquema por si algún día vuelve el sprint,
+        # pero hoy solo se crean carreras.
+        "kind": "race",
         "scheduled_at": _iso(session.date),
         "betting_closes_at": _iso(betting_closes_at),
     }

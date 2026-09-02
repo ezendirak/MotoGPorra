@@ -12,8 +12,6 @@ import { RaceStatusBadge } from './race-status-badge'
  * de 72 px de alto se acierta sin mirar, un enlace de texto no.
  */
 export function RaceCard({ race }: { race: RaceView }) {
-  const esSprint = race.kind === 'sprint'
-
   return (
     <Link
       href={`/races/${race.id}`}
@@ -26,7 +24,7 @@ export function RaceCard({ race }: { race: RaceView }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-zinc-500">
-            R{race.round} · {esSprint ? 'Sprint' : 'Carrera'}
+            Ronda {race.round}
           </span>
           <RaceStatusBadge status={race.status} />
         </div>

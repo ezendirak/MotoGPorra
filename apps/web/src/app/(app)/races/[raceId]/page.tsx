@@ -45,9 +45,7 @@ export default async function RaceDetailPage({
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500">
-                R{race.round} · {race.kind === 'sprint' ? 'Sprint' : 'Carrera'}
-              </span>
+              <span className="text-xs text-zinc-500">Ronda {race.round}</span>
               <RaceStatusBadge status={race.status} />
             </div>
             <h1 className="mt-1 text-xl leading-tight font-bold text-white">

@@ -1,11 +1,11 @@
-﻿export type Json =
+export type Json =
   string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '14.15'
+    PostgrestVersion: '14.5'
   }
   graphql_public: {
     Tables: {
@@ -682,24 +682,21 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          points_exact_position: number
-          points_podium_any: number
+          points_by_pattern: Json
           season_id: string
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
-          points_exact_position?: number
-          points_podium_any?: number
+          points_by_pattern?: Json
           season_id: string
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
-          points_exact_position?: number
-          points_podium_any?: number
+          points_by_pattern?: Json
           season_id?: string
           updated_at?: string
         }

@@ -78,8 +78,7 @@ function FilaCarrera({ carrera }: { carrera: Carrera }) {
             {carrera.circuit_name}
           </p>
           <p className="text-xs text-zinc-500">
-            {carrera.kind === 'sprint' ? 'Sprint' : 'Carrera'} · Ronda {carrera.round} ·
-            cierra {formatRaceDate(carrera.closes_at)}
+            Ronda {carrera.round} · cierra {formatRaceDate(carrera.closes_at)}
           </p>
         </div>
 

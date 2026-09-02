@@ -63,9 +63,7 @@ export default async function BetPage({
             <h1 className="text-lg leading-tight font-bold text-white">
               {race.circuit_name}
             </h1>
-            <p className="text-sm text-zinc-400">
-              {race.kind === 'sprint' ? 'Sprint' : 'Carrera'} · Ronda {race.round}
-            </p>
+            <p className="text-sm text-zinc-400">Ronda {race.round}</p>
           </div>
         </div>
 

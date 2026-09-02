@@ -52,9 +52,67 @@ export default async function StandingsPage() {
         </ol>
       )}
 
-      <p className="text-center text-xs text-zinc-600">
-        1 punto por cada posición del podio acertada. Sprint y carrera puntúan igual.
-      </p>
+      <TablaDePuntos />
     </main>
+  )
+}
+
+/**
+ * Las reglas, a la vista de todos.
+ *
+ * Se enseña la tabla entera y no una frase resumen porque la puntuación **no
+ * es aditiva**: acertar 1º y 2º da 10 puntos, no los 7 que saldrían de sumar
+ * sus valores sueltos. Cualquier resumen corto mentiría, y discutir puntos con
+ * los amigos es medio juego.
+ */
+function TablaDePuntos() {
+  const FILAS = [
+    { patron: [true, true, true], puntos: 15 },
+    { patron: [true, true, false], puntos: 10 },
+    { patron: [true, false, true], puntos: 7 },
+    { patron: [true, false, false], puntos: 5 },
+    { patron: [false, true, true], puntos: 3 },
+    { patron: [false, true, false], puntos: 2 },
+    { patron: [false, false, true], puntos: 1 },
+  ]
+
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3">
+      <h2 className="text-xs font-semibold text-zinc-400">Cómo se puntúa</h2>
+      <p className="mt-1 text-xs text-zinc-600">
+        Según qué posiciones del podio aciertes.
+      </p>
+
+      <ul className="mt-3 flex flex-col gap-1">
+        {FILAS.map(({ patron, puntos }) => (
+          <li
+            key={puntos}
+            className="flex items-center gap-3 text-xs text-zinc-400 tabular-nums"
+          >
+            <span className="flex gap-1" aria-hidden="true">
+              {patron.map((acierto, i) => (
+                <span
+                  key={i}
+                  className={
+                    acierto
+                      ? 'flex h-5 w-5 items-center justify-center rounded bg-emerald-950/60 text-emerald-400'
+                      : 'flex h-5 w-5 items-center justify-center rounded bg-zinc-800/60 text-zinc-600'
+                  }
+                >
+                  {acierto ? i + 1 : '·'}
+                </span>
+              ))}
+            </span>
+            <span className="sr-only">
+              {patron.map((a, i) => `${i + 1}º ${a ? 'acertado' : 'fallado'}`).join(', ')}
+              :
+            </span>
+            <span className="font-medium text-zinc-300">
+              {puntos} {puntos === 1 ? 'punto' : 'puntos'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

@@ -13,7 +13,7 @@
 | Fase | Estado | Comprobado con |
 |---|---|---|
 | 0 — Fundación | ✅ | CI en verde |
-| 1 — Base de datos | ✅ | `npm run db:verify` → 34/34 |
+| 1 — Base de datos | ✅ | `npm run db:verify` → 36/36 |
 | 2 — Autenticación | ✅ | registro y login reales |
 | 3 — Shell y calendario | ✅ | build + rutas protegidas |
 | 4 — Apuestas | ✅ | apuesta real creada y puntuada |
@@ -52,13 +52,13 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, 44 carreras apostables, 29 pi
 | # | Decisión | Consecuencia en el diseño |
 |---|---|---|
 | 1 | **Solo MotoGP.** Moto2/Moto3 más adelante | El esquema mantiene `categories`; el sync y la UI filtran a MotoGP. Añadir categorías después es configuración, no migración |
-| 2 | **Sí se apuesta al Sprint** | Un GP genera **dos** carreras apostables (`SPR` y `RAC`). Ver §1.3 y §4.4 |
+| 2 | ~~**Sí se apuesta al Sprint**~~ → **REVERTIDA (27/08/2026): solo se apuesta al Gran Premio.** | Un GP genera **una** carrera apostable (`RAC`). Las 22 filas de sprint se borraron. `kind` se conserva en el esquema por si volviera, pero el sync ya no las crea |
 | 3 | **Cierre 15 min antes de FP1** | Único cierre por GP: ambas apuestas (sprint y carrera) cierran a la vez, antes de FP1 |
 | 4 | **Los empates se comparten** | `rank()` sobre puntos; sin criterios de desempate. Se muestra la misma posición |
 | 5 | **Registro abierto** | Sin invitaciones ni aprobación. Landing → login o alta |
 | 6 | **`get_riders` solo da la temporada actual** | El histórico se construye por **acumulación**: cada temporada deja su snapshot en `rider_season_entries` y jamás se borra. No es reconstruible hacia atrás |
 | 7 | **Monorepo** con `motogp_client` dentro | Un solo repo → `workflow_dispatch` basta para el sync manual, sin `repository_dispatch` entre repos |
-| 8 | **El sprint puntúa igual que la carrera**: 1 punto por acierto | `scoring_rules` sin multiplicador por `kind`. Máximo 6 puntos por GP |
+| 8 | ~~**1 punto por acierto**~~ → **REVISADA (27/08/2026): puntuación por combinación.** | Tabla de consulta por patrón de aciertos, **no aditiva**. Máximo **15 puntos por GP**. Ver §9.2 |
 | 9 | **Se amplía `motogp-client`** (§13) como fase 7a | El sincronizador no accederá nunca a atributos privados de la librería |
 | 10 | **Service worker propio, sin Serwist** | Ver §14. Turbopack se queda; no hay paso de build extra ni dependencias nuevas. A cambio, las estrategias de caché se escriben a mano en `public/sw.js` |
 | 11 | **No se cachea nada autenticado** | Toda la app pasa por `requireUser()`, así que su HTML y sus cargas RSC son distintas por usuario. El worker solo guarda `/_next/static/*` e `/icons/*`. Sin conexión no hay app: hay una página de aviso |
@@ -1430,6 +1430,27 @@ Este documento decía: *«El integrado de Supabase envía ~2-3 correos/hora. Ant
 **Resuelto** con SMTP de Gmail y contraseña de aplicación: `smtp.gmail.com:587`, sin dominio y sin coste. Tras activarlo, Supabase sube el tope a 30 correos/hora, ajustable.
 
 > Lección general: **un límite documentado como cuota suele esconder una restricción cualitativa.** La diferencia entre «va lento» y «no funciona para nadie salvo para ti» se descubrió leyendo la documentación, no probando — porque probándolo desde la cuenta del dueño del proyecto funciona siempre.
+
+### Cambio de reglas (27/08/2026): fuera el sprint, puntuación por combinación
+
+Dos peticiones del dueño de la porra que revierten decisiones tempranas.
+
+**El sprint desaparece.** La decisión 2 lo había incluido y por eso un GP generaba dos carreras apostables. Ya no: solo se apuesta al Gran Premio. Se borraron las 22 filas `kind='sprint'` con sus 13 resultados. La columna `kind` y su enumerado **se conservan** —volver a activarlo sería configuración, no migración— y las sesiones `SPR` siguen guardándose en `sessions`, porque son parte del fin de semana y el cierre se calcula igual con `min(scheduled_at)`.
+
+**La puntuación deja de ser aditiva.** Antes era 1 punto por posición acertada. Ahora depende de *qué* posiciones aciertes:
+
+| patrón | puntos | | patrón | puntos |
+|---|---|---|---|---|
+| 1-2-3 | 15 | | X-2-3 | 3 |
+| 1-2-X | 10 | | X-2-X | 2 |
+| 1-X-3 | 7 | | X-X-3 | 1 |
+| 1-X-X | 5 | | X-X-X | 0 |
+
+**No se puede expresar como suma**, y conviene tenerlo presente: acertar 1º y 2º da 10, mientras que sumar sus valores sueltos (5 + 2) daría 7. Hay bonus por combinación. Por eso se guarda como **tabla de consulta** en `scoring_rules.points_by_pattern`, un JSONB con clave de tres caracteres —`'110'` es acertar 1º y 2º— y no como valor por posición. Cualquier reimplementación «simplificándolo» a una suma daría números distintos a los acordados, así que `verify.mjs` comprueba explícitamente que el patrón `110` vale 10 y no 7.
+
+Las columnas `points_exact_position` y `points_podium_any` **se eliminan** en vez de dejarlas a cero: una regla que ya no se aplica pero sigue en el esquema es exactamente lo que hace que alguien la cambie dentro de un año esperando que pase algo.
+
+> **De paso, un aviso sobre `verify.mjs`.** La suite corre contra el proyecto real, y al haber ya apuestas de participantes de verdad empezaron a fallar tres comprobaciones que daban por supuesta una base vacía: contaban *todos* los picks visibles y exigían posiciones absolutas. Ahora son relativas —los empatados «comparten puesto», sea cual sea— porque la alternativa es una suite que se rompe sola según cuánta gente esté jugando.
 
 ### Hallazgo de la Fase 10: un resultado «oficial» sin resultado dentro
 

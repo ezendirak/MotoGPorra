@@ -133,8 +133,8 @@ try {
 
   const rules = (await rest('scoring_rules?select=*')).json
   check(
-    rules?.length === 1 && rules[0].points_exact_position === 1,
-    `1 punto por acierto (es ${rules?.[0]?.points_exact_position})`,
+    rules?.length === 1 && rules[0].points_by_pattern?.['111'] === 15,
+    `acertar el podio entero vale 15 (vale ${rules?.[0]?.points_by_pattern?.['111']})`,
   )
 
   const motogp = cats.find((c) => c.code === 'MOTOGP')
@@ -238,8 +238,13 @@ try {
     `abierta: A solo ve la suya (ve ${visto?.length})`,
   )
 
-  let picksVistos = (await rest('bet_picks?select=bet_id', { headers: asUser(tokA) })).json
-  check(picksVistos?.length === 3, `abierta: A solo ve sus 3 picks (ve ${picksVistos?.length})`)
+  // Acotado a las apuestas de ESTA carrera: la base tiene apuestas reales de
+  // carreras ya cerradas que A puede ver legítimamente, y contarlas todas
+  // haría que la prueba dependiera de cuánta gente esté jugando.
+  const betsDeLaCarrera = (await rest(`bets?select=id&race_id=eq.${race.id}`)).json
+  const idsBets = betsDeLaCarrera.map((b) => b.id).join(',')
+  let picksVistos = (await rest(`bet_picks?select=bet_id&bet_id=in.(${idsBets})`, { headers: asUser(tokA) })).json
+  check(picksVistos?.length === 3, `abierta: A solo ve sus 3 picks de esta carrera (ve ${picksVistos?.length})`)
 
   // Cerramos la carrera moviendo el cierre al pasado.
   await rest(`races?id=eq.${race.id}`, {
@@ -280,11 +285,11 @@ try {
   const scores = (await rest(`race_scores?select=user_id,points,exact_hits&race_id=eq.${race.id}`)).json
   const sA = scores?.find((s) => s.user_id === userA.id)
   const sB = scores?.find((s) => s.user_id === userB.id)
-  check(sA?.points === 3, `A acertó el podio entero: 3 puntos (tiene ${sA?.points})`)
-  check(sB?.points === 1, `B solo acertó el 2º: 1 punto (tiene ${sB?.points})`)
+  check(sA?.points === 15, `A acertó el podio entero: 15 puntos (tiene ${sA?.points})`)
+  check(sB?.points === 2, `B solo acertó el 2º: patrón 010 = 2 puntos (tiene ${sB?.points})`)
 
   const stand = (await rest(`season_standings?select=*&season_id=eq.${season.id}&order=position`, { headers: asUser(tokA) })).json
-  check(stand?.[0]?.total_points === 3, `clasificación: líder con 3 puntos (${stand?.[0]?.total_points})`)
+  check(stand?.[0]?.total_points === 15, `clasificación: líder con 15 puntos (${stand?.[0]?.total_points})`)
   check(stand?.[0]?.position === 1 && stand?.[1]?.position === 2, 'posiciones 1 y 2 correctas')
 
   const stFin = (await rest(`races_view?select=status&id=eq.${race.id}`)).json
@@ -294,7 +299,7 @@ try {
   await rpc('recalculate_race_scores', { p_race_id: race.id })
   const scores2 = (await rest(`race_scores?select=user_id,points&race_id=eq.${race.id}`)).json
   check(
-    scores2?.length === 2 && scores2.find((s) => s.user_id === userA.id).points === 3,
+    scores2?.length === 2 && scores2.find((s) => s.user_id === userA.id).points === 15,
     'recalcular es idempotente',
   )
 
@@ -308,18 +313,27 @@ try {
   const userC = await createUser(emailC)
   const tokC = await signIn(emailC)
 
-  /** Crea una carrera ya cerrada, con apuestas y podio, y la puntúa. */
-  async function disputar({ eventId, kind, podio, apuestas }) {
+  /** Crea un GP entero ya disputado, con apuestas y podio, y lo puntúa. */
+  async function disputar({ sufijo, ronda, podio, apuestas }) {
+    const evento = await insert('events', {
+      season_id: season.id,
+      circuit_id: circuit.id,
+      motogp_event_id: `test-event-${sufijo}-${stamp}`,
+      name: `GP de Prueba ${sufijo}`,
+      round: ronda,
+      country_code: 'ES',
+    })
+    created.events.push(evento.id)
+
     const pasado = new Date(Date.now() - 864e5).toISOString()
     const carrera = await insert('races', {
       season_id: season.id,
-      event_id: eventId,
+      event_id: evento.id,
       category_id: catId,
-      kind,
+      kind: 'race',
       scheduled_at: pasado,
-      // Abierta al insertar las apuestas y cerrada después: se logra dejando
-      // el cierre en el pasado y escribiendo los picks con service_role, que
-      // bypasa la RLS. La ventana temporal ya se comprueba en [4] y [5].
+      // Las apuestas se escriben con service_role, que bypasa la RLS: la
+      // ventana temporal ya se comprueba en [4] y [5] y aquí solo estorbaría.
       betting_closes_at: pasado,
     })
 
@@ -352,75 +366,83 @@ try {
   }
 
   const puntosDe = async (userId) => {
-    const filas = (await rest(`season_standings?select=total_points,position&season_id=eq.${season.id}&user_id=eq.${userId}`, { headers: asUser(tokC) })).json
-    return filas?.[0] ?? { total_points: 0, position: null }
+    const filas = (await rest(`season_standings?select=total_points,position,races_played&season_id=eq.${season.id}&user_id=eq.${userId}`, { headers: asUser(tokC) })).json
+    return filas?.[0] ?? { total_points: 0, position: null, races_played: 0 }
   }
 
-  // El sprint del MISMO GP en el que A ya sumó 3 puntos (decisiones 2 y 8).
-  // A acierta el podio entero otra vez; C acierta solo el 1º; B no apuesta.
-  await disputar({
-    eventId: event.id,
-    kind: 'sprint',
+  // Tras [6]: A acertó el podio entero (15) y B solo el 2º (2).
+  //
+  // GP2 — A acierta 1º y 2º pero falla el 3º. Es la comprobación que de verdad
+  // importa de la tabla nueva: el patrón 110 vale 10, y NO los 7 que saldrían
+  // de sumar los valores sueltos de cada posición (5 + 2). Si alguien
+  // reimplementara la puntuación como una suma, esto es lo que lo delataría.
+  const gp2 = await disputar({
+    sufijo: '2',
+    ronda: 98,
     podio: [r1, r2, r3],
-    apuestas: { [userA.id]: [r1, r2, r3], [userC.id]: [r1, r3, r2] },
+    apuestas: {
+      [userA.id]: [r1, r2, r4],   // 110 -> 10
+      [userC.id]: [r3, r2, r1],   // 010 -> 2
+    },
   })
 
-  const trasSprint = await puntosDe(userA.id)
-  check(
-    trasSprint.total_points === 6,
-    `sprint y carrera suman por separado: A lleva 6 (lleva ${trasSprint.total_points})`,
-  )
-  check(trasSprint.total_points <= 6, 'un GP reparte como máximo 6 puntos')
+  const scoresGp2 = (await rest(`race_scores?select=user_id,points,exact_hits&race_id=eq.${gp2.id}`)).json
+  const aGp2 = scoresGp2?.find((s) => s.user_id === userA.id)
+  check(aGp2?.points === 10, `patrón 110 vale 10 y no 7: la tabla no es aditiva (da ${aGp2?.points})`)
+  check(aGp2?.exact_hits === 2, `exact_hits sigue contando aciertos, no puntos (${aGp2?.exact_hits})`)
 
-  const cTrasSprint = await puntosDe(userC.id)
-  check(cTrasSprint.total_points === 1, `C acertó solo el 1º: 1 punto (tiene ${cTrasSprint.total_points})`)
+  const cGp2 = scoresGp2?.find((s) => s.user_id === userC.id)
+  check(cGp2?.points === 2, `patrón 010 vale 2 (da ${cGp2?.points})`)
 
-  // B y C empatan a 1: deben COMPARTIR el 2º puesto (decisión 4).
+  const trasGp2A = await puntosDe(userA.id)
+  check(trasGp2A.total_points === 25, `A acumula entre GP: 15 + 10 = 25 (tiene ${trasGp2A.total_points})`)
+  check(trasGp2A.races_played === 2, `A ha puntuado en 2 carreras (${trasGp2A.races_played})`)
+
+  // B y C empatan a 2: deben COMPARTIR el 2º puesto y el siguiente saltar
+  // al 4º (decisión 4). Es `rank()`, no `dense_rank()`.
   const conEmpate = (await rest(`season_standings?select=user_id,total_points,position&season_id=eq.${season.id}&order=position`, { headers: asUser(tokC) })).json
   const posB = conEmpate?.find((f) => f.user_id === userB.id)
   const posC = conEmpate?.find((f) => f.user_id === userC.id)
   check(
-    posB?.total_points === 1 && posC?.total_points === 1,
-    'B y C empatan a 1 punto',
+    posB?.total_points === 2 && posC?.total_points === 2,
+    `B y C empatan a 2 puntos (B ${posB?.total_points}, C ${posC?.total_points})`,
   )
   check(
-    posB?.position === 2 && posC?.position === 2,
-    `los empatados comparten el 2º puesto (B: ${posB?.position}, C: ${posC?.position})`,
+    posB?.position != null && posB.position === posC?.position,
+    `los empatados COMPARTEN puesto (B: ${posB?.position}, C: ${posC?.position})`,
+  )
+  // El salto es lo que distingue `rank()` de `dense_rank()`: tras dos
+  // empatados, el siguiente puesto ocupado no puede ser el inmediato.
+  const siguiente = conEmpate?.find((f) => (f.position ?? 0) > (posB?.position ?? 0))
+  check(
+    !siguiente || siguiente.position >= (posB?.position ?? 0) + 2,
+    `tras el empate el puesto salta (empate en ${posB?.position}, siguiente ${siguiente?.position ?? 'ninguno'})`,
   )
 
-  // Segundo GP: C acierta el podio entero y adelanta a B, que no apuesta.
-  const evento2 = await insert('events', {
-    season_id: season.id,
-    circuit_id: circuit.id,
-    motogp_event_id: `test-event2-${stamp}`,
-    name: 'GP de Prueba 2',
-    round: 98,
-    country_code: 'ES',
-  })
-  created.events.push(evento2.id)
-
+  // GP3 — C acierta el podio entero, deshace el empate y adelanta a B.
   await disputar({
-    eventId: evento2.id,
-    kind: 'race',
+    sufijo: '3',
+    ronda: 97,
     podio: [r1, r2, r3],
-    apuestas: { [userC.id]: [r1, r2, r3] },
+    apuestas: { [userC.id]: [r1, r2, r3] },   // 111 -> 15
   })
 
-  const finalC = await puntosDe(userC.id)
+  const finalA = await puntosDe(userA.id)
   const finalB = await puntosDe(userB.id)
-  check(finalC.total_points === 4, `C acumula entre GP distintos: 4 puntos (tiene ${finalC.total_points})`)
+  const finalC = await puntosDe(userC.id)
+
+  check(finalC.total_points === 17, `C suma 2 + 15 = 17 (tiene ${finalC.total_points})`)
   check(
-    finalC.position === 2 && finalB.position === 3,
-    `C adelanta a B: 2º y 3º (C ${finalC.position}, B ${finalB.position})`,
+    finalA.position < finalC.position && finalC.position < finalB.position,
+    `deshecho el empate, A por delante de C y C de B (A ${finalA.position}º, C ${finalC.position}º, B ${finalB.position}º)`,
   )
 
-  // Deshecho el empate, el puesto siguiente ya no salta.
-  const finalA = await puntosDe(userA.id)
-  check(finalA.position === 1, `A sigue líder con 6 (${finalA.total_points}, ${finalA.position}º)`)
+  // Sin sprint, un Gran Premio reparte como máximo 15 puntos (decisión 2,
+  // revisada): una sola carrera apostable por GP.
+  const maxPorGp = (await rest(`race_scores?select=points&order=points.desc&limit=1`)).json
+  check((maxPorGp?.[0]?.points ?? 0) <= 15, `ninguna carrera da más de 15 puntos (máx ${maxPorGp?.[0]?.points})`)
 
-  // races_played cuenta carreras puntuadas, no Grandes Premios.
-  const jugadas = (await rest(`season_standings?select=races_played&season_id=eq.${season.id}&user_id=eq.${userA.id}`, { headers: asUser(tokC) })).json
-  check(jugadas?.[0]?.races_played === 2, `A ha puntuado en 2 carreras (${jugadas?.[0]?.races_played})`)
+
 } catch (err) {
   fail++
   console.log(`\n  EXCEPCIÓN: ${err.message}`)

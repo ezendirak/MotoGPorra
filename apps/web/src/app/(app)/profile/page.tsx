@@ -68,9 +68,7 @@ export default async function ProfilePage() {
                   <p className="truncate text-sm font-medium text-zinc-200">
                     {fila.circuitName}
                   </p>
-                  <p className="text-xs text-zinc-500">
-                    R{fila.round} · {fila.kind === 'sprint' ? 'Sprint' : 'Carrera'}
-                  </p>
+                  <p className="text-xs text-zinc-500">Ronda {fila.round}</p>
                 </div>
                 <span className="flex shrink-0 gap-0.5 text-xs" aria-hidden="true">
                   {[1, 2, 3].map((pos, i) => (

@@ -457,8 +457,9 @@ def sync_calendar(
                 sesiones, margin_minutes=config.betting_close_margin_minutes
             )
 
-            # Sprint y carrera comparten cierre: si el sprint cerrara el sábado,
-            # se apostaría con la información de la clasificación ya conocida.
+            # Una carrera apostable por Gran Premio, la del domingo. El cierre
+            # sigue siendo 15 min antes de la primera sesión del fin de semana
+            # para que se apueste a ciegas, sin haber visto los entrenamientos.
             carreras = [
                 mappers.map_race(
                     s,
@@ -469,7 +470,7 @@ def sync_calendar(
                     betting_closes_at=cierre,
                 )
                 for s in sesiones
-                if s.code in ("SPR", "RAC") and s.id in id_sesion
+                if s.code == "RAC" and s.id in id_sesion
             ]
 
             if carreras:
