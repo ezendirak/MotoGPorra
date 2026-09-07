@@ -34,9 +34,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Versión FIJA, no `latest`. Con `latest` la acción pregunta a la API de
+      # GitHub cuál es la última release, sin autenticar; los runners comparten
+      # un pool de IPs y el límite se agota, así que el workflow fallaba con
+      # "Failed to resolve latest Supabase CLI release: rate limit exceeded"
+      # sin que nada del proyecto hubiera cambiado.
+      #
+      # Fijarla arregla dos cosas de una: quita esa consulta, y hace que la
+      # copia use el MISMO CLI que en local (`supabase` en package.json). Con
+      # `latest`, un cambio de formato del volcado podía llegar solo, un lunes
+      # a las cinco de la mañana, sin que nadie hubiera tocado nada.
+      #
+      # Al subir la dependencia de package.json, subir también esta línea.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.111.0
 
       # El host directo de Postgres de Supabase solo publica registro AAAA, así
       # que solo se alcanza por IPv6. Este paso dice si el runner llega o no,
