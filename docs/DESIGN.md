@@ -8,24 +8,29 @@
 
 ## Estado actual
 
-**Última actualización: 02/08/2026.**
+**Última actualización: 17/09/2026.**
 
 | Fase | Estado | Comprobado con |
 |---|---|---|
 | 0 — Fundación | ✅ | CI en verde |
-| 1 — Base de datos | ✅ | `npm run db:verify` → 36/36 |
+| 1 — Base de datos | ✅ | `npm run db:verify` → 38/38 |
 | 2 — Autenticación | ✅ | registro y login reales |
 | 3 — Shell y calendario | ✅ | build + rutas protegidas |
 | 4 — Apuestas | ✅ | apuesta real creada y puntuada |
 | 5 — Resultados y puntuación | ✅ | prueba en Mugello: podio real, `breakdown` correcto |
-| 6 — Clasificación | ✅ | evolución por flechas y realtime sobre `race_scores`; `db:verify` sigue en 25/25 |
+| 6 — Clasificación | ✅ | evolución por flechas y realtime sobre `race_scores` |
 | 7a — Ampliar librería | ✅ | 66 tests |
 | 7b — Sincronizador | ✅ | temporada 2026 completa, 0 discrepancias, ejecutado en Actions |
 | 8 — Administración | ✅ | roles, cuentas sin confirmar, apertura/cierre excepcional y disparo manual del sync |
 | 9 — PWA | ✅ | instalada desde el móvil en `motogporra.vercel.app` |
-| 10 — Producción | 🔶 | desplegada en Vercel, SMTP propio, alta y recuperación probadas; faltan backups, monitorización y tests E2E |
+| 10 — Producción | 🔶 | desplegada en Vercel, SMTP propio, **copias semanales funcionando** (marcadores del 07 y el 14/09); faltan monitorización y tests E2E |
+| — En uso real | 🏁 | **temporada 2026 en marcha con ~13 participantes**. Dos incidencias reportadas por ellos y corregidas el 17/09, ver §14 |
 
-Datos cargados: 22 circuitos, 22 GP, 177 sesiones, **22 carreras apostables** (una por GP), 30 pilotos (22 activos) y los resultados de las carreras ya disputadas.
+Datos cargados: 22 circuitos, 22 GP, 177 sesiones, **22 carreras apostables** (una por GP), 30 pilotos (22 activos) con sus retratos y dorsales en Storage, y los resultados de las 13 carreras ya disputadas.
+
+Las apuestas cierran **5 minutos antes de la Q1** desde el 02/09 (decisión 3, revisada).
+
+> **Las ligas privadas están diseñadas, implementadas y APARCADAS.** Viven enteras en la rama `ligas` (30 ficheros: migración, servicios, pantallas y 64 comprobaciones en `verify.mjs`), validadas contra un segundo proyecto de Supabase desechable. `main` sigue siendo la porra única. Se retomará cuando se decida; el diseño y el porqué de la opción elegida están en el commit de esa rama, no aquí, para que este documento describa lo que hay en producción.
 
 ### Lo siguiente, por orden de valor
 
@@ -42,7 +47,7 @@ Datos cargados: 22 circuitos, 22 GP, 177 sesiones, **22 carreras apostables** (u
 - **Los correos salen desde una cuenta personal de Gmail** (ver §14). Funciona y es gratis, pero los primeros mensajes caen en Spam o Promociones hasta que alguien los marca, y el remitente es una dirección personal en vez de algo tipo `porra@…`. El día que haya dominio propio, se pasa a un proveedor con DKIM y se acabó.
 - **Límite de 30 correos/hora**, el que Supabase pone por defecto tras activar SMTP propio. Ajustable en *Authentication → Rate Limits*. Con ~20 participantes solo aprieta si todos se dan de alta la misma tarde.
 - **3 vulnerabilidades `high`** en dependencias transitivas de Next.js (`postcss`, `sharp`). No hay versión que las resuelva hoy; `npm audit fix --force` degradaría el framework.
-- **El cron automático nunca se ha disparado solo.** La ejecución manual del 02/08 funcionó; el primer `schedule` es el lunes 04:00 UTC.
+- **El `core.autocrlf=true` de Windows pelea con Prettier.** El repositorio guarda LF, git escribe CRLF al hacer checkout y `prettier --check` lo rechaza: en un clon nuevo, `npm run check` falla hasta pasar `npm run format`. Se arregla con un `.gitattributes` de una línea (`* text=auto eol=lf`), pendiente de hacer porque reescribiría los finales de línea de todo el repositorio y merece ser un cambio propio.
 - **No hay monitorización.** El único rastro de un fallo en producción es el `digest` que enseña `error.tsx` y los logs de Vercel: sirve para depurar a petición, no para enterarse de que algo se ha roto.
 
 ---
@@ -1317,7 +1322,7 @@ apps/sync/
 | Fase | Contenido | Entregable verificable |
 |---|---|---|
 | **0 — Fundación** ✅ | Monorepo, Next.js 16 + TS estricto + Tailwind 4, ESLint/Prettier con reglas de arquitectura, validación de entorno con Zod, CI | `format` + `lint` + `typecheck` + `build` en verde. Pendiente: `git init` y proyecto Supabase |
-| **1 — Base de datos** ✅ | 16 migraciones (§4), enums, índices, constraints, funciones, RLS, datos de referencia | Aplicadas y verificadas: `npm run db:verify` pasa 36/36, incluido que un usuario no ve la apuesta ajena antes del cierre y que la puntuación por combinación no es aditiva |
+| **1 — Base de datos** ✅ | 18 migraciones (§4), enums, índices, constraints, funciones, RLS, datos de referencia | Aplicadas y verificadas: `npm run db:verify` pasa 38/38, incluido que un usuario no ve la apuesta ajena antes del cierre y que la puntuación por combinación no es aditiva |
 | **2 — Autenticación** ✅ | Registro, login, verificación, recuperación, trigger `handle_new_user`, hook de claim de rol, middleware, layouts protegidos | Ciclo completo de alta y recuperación desde el móvil |
 | **3 — Shell y datos de sólo lectura** ✅ | Layout móvil, bottom nav, calendario, detalle de carrera, ficha de piloto. Datos cargados a mano en la base para desarrollar sin sincronizador | Navegación completa con datos reales de una temporada |
 | **4 — Apuestas** ✅ | `place_bet`, formulario, selector de pilotos, cuenta atrás, edición mientras esté abierta, estado vacío/cerrado | Un usuario apuesta y edita desde el móvil; el cierre se respeta con reloj manipulado |
@@ -1509,11 +1514,43 @@ Lanzando una sincronización a las 02:00 de la madrugada, el panel la fechó dos
 
 No afectaba solo a la auditoría: la home anunciaba **la hora de la carrera dos horas antes de la real**, que es justo el dato por el que alguien pone la tele.
 
-**Lo que sí estaba bien, y por qué.** El cierre de apuestas no se vio afectado en ningún momento, y no por suerte: nunca compara textos de hora, sino **instantes**. `closes_at` en UTC, `now()` de Postgres en UTC, y la cuenta atrás restando dos marcas de tiempo. Verificado: `timeUntilPrecise` devuelve lo mismo ejecutándose en UTC que en Madrid, mientras que `formatRaceDate` devolvía `00:00` y `02:00`.
+**Lo que sí estaba bien, y por qué.** El cierre de apuestas no se vio afectado, y no por suerte: nunca compara textos de hora, sino **instantes**. `closes_at` en UTC y `now()` de Postgres en UTC, que es lo que decide quién puede apostar.
+
+> ⚠️ **Matiz añadido el 17/09/2026.** Este párrafo decía también que la cuenta atrás estaba a salvo por restar dos marcas de tiempo. Cierto a medias: una de las dos era el reloj **del navegador**, y eso resultó ser un fallo distinto que tardó tres semanas en aparecer. Ver «el reloj del móvil decidía si podías apostar», más abajo.
 
 **Corregido** fijando `timeZone: 'Europe/Madrid'` en los tres formateadores (decisión 16). Comprobado que el resultado es idéntico con el proceso en UTC, en Madrid y en Nueva York, y que el salto CEST/CET lo resuelve el identificador IANA.
 
 > Lección general: **una función de formato no es pura respecto al entorno.** `Intl` y `new Date()` leen la zona del proceso, así que el mismo código da resultados distintos en tu máquina y en el servidor. En cuanto una fecha se formatee en servidor, la zona hay que fijarla.
+
+### Hallazgo del 17/09/2026: el reloj del móvil decidía si podías apostar
+
+Con la porra ya en manos de una docena de personas, un participante reportó que **pudo apostar con la Q1 ya empezada**. Lo primero fue comprobarlo contra la base, apuesta por apuesta: las 13 de San Marino entraron entre el viernes y las 09:40 del sábado, con el cierre a las 10:45 y la Q1 a las 10:50. La más ajustada llegó con **65 minutos de margen**. Ninguna apuesta se coló, y no podía colarse: `place_bet` valida la ventana con el reloj del servidor y la RLS la vuelve a comprobar al escribir.
+
+Lo que falló fue lo que la aplicación **decía**. `useCountdown` comparaba `closes_at` con `new Date()` del navegador, así que un móvil con la hora atrasada unos minutos veía «Cierra en 6 min» con la Q1 rodando. Y peor: como la cuenta atrás nunca llegaba a cero, tampoco disparaba el `router.refresh()` que retira el formulario. Esa persona tenía delante el formulario abierto, un contador corriendo y la Q1 en la tele. Si llega a pulsar guardar, le habría saltado `BETTING_CLOSED`.
+
+Se descartaron por el camino el service worker (no cachea navegaciones), el estado derivado de `races_view`, los `status_override` —todos nulos— y el cálculo del cierre, que era correcto en las 22 carreras.
+
+**Corregido** invirtiendo quién pone el reloj: el servidor manda los milisegundos que faltan (`msHasta`) y el navegador descuenta con `performance.now()`, que es monótono y no lo mueve la hora del sistema ni un cambio de zona a mitad de cuenta. El reloj del dispositivo ya no participa en ningún punto.
+
+Se eliminó de paso `timeUntilPrecise`, que se quedaba sin uso y llevaba dentro la misma trampa —un `new Date()` por defecto— esperando a que alguien volviera a llamarla desde un componente de cliente.
+
+> Lección general, hermana de la de la zona horaria: **ni `Intl` ni `new Date()` son fuentes de verdad en el cliente.** Ya sabíamos que el formateo depende de dónde corra el proceso; faltaba la otra mitad, que es que la HORA del dispositivo tampoco es de fiar. Cualquier cuenta atrás con consecuencias se ancla a un valor del servidor.
+
+### Hallazgo del 17/09/2026: deshabilitar lo ya elegido obligaba a deshacer
+
+Del mismo grupo salió la segunda queja: al construir el podio, los pilotos ya colocados aparecían deshabilitados, así que subir al tercero al primer puesto exigía quitarlo de su sitio, cerrar, volver a abrir y buscarlo otra vez.
+
+Se barajaron tres salidas: un botón de «quitar selección», mover dejando hueco en la posición de origen, o **intercambiar**. Se eligió intercambiar, y el argumento decide solo: cuando la posición de destino está vacía, intercambiar y mover dan exactamente el mismo resultado; cuando está ocupada —reordenar el podio, que es el gesto más frecuente— intercambiar lo resuelve en un toque y mover deja un hueco que hay que rellenar. Intercambiar **solo añade casos**, no quita ninguno. El botón de quitar se descartó por añadir un control para algo que el intercambio ya cubre.
+
+La lógica vive en `utils/podium.ts` como función pura, con una prueba de que **nunca deja un piloto repetido** — que es lo que la base rechazaría con `DUPLICATE_RIDER`.
+
+### Hallazgo del 17/09/2026: `version: latest` rompió la copia de seguridad sin que cambiara nada
+
+El workflow semanal empezó a fallar con `Failed to resolve latest Supabase CLI release: rate limit exceeded`. Nadie había tocado el proyecto. Con `version: latest`, `supabase/setup-cli` pregunta a la API de GitHub cuál es la última release **sin autenticar**, y los runners comparten un pool de IPs: cuando el cupo por hora está agotado, no hay copia.
+
+**Corregido** fijando la versión a la misma que declara `package.json`. Además de quitar esa consulta, arregla algo latente y peor: la copia usaba un CLI distinto al de local y podía cambiar de versión sola un lunes de madrugada. Si una versión nueva cambiara el formato del volcado, nos enteraríamos el día que hiciera falta restaurar.
+
+> Lección general: **`latest` en una dependencia de CI es una llamada de red y una versión sin fijar, las dos cosas a la vez.** En un workflow que solo corre una vez por semana, ninguna de las dos se detecta hasta que falla.
 
 ### Hallazgo del 02/09/2026: la API sí da fotos, pero no se pueden enlazar
 
