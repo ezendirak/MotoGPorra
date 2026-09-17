@@ -158,6 +158,15 @@ Todas verificadas contra respuestas reales. Viven encapsuladas en `apps/sync/src
 - **No hay Docker**: sin stack local de Supabase. Las migraciones van directas al proyecto enlazado y `supabase db dump` no funciona.
 - **Sin ruta IPv6**: el host directo de Postgres (`db.<ref>.supabase.co`) es inalcanzable. Por eso `apps/sync` usa PostgREST y no `psycopg`, y por eso los jobs son idempotentes en vez de transaccionales. **Los runners de GitHub tampoco tienen IPv6** (medido).
 - **Para conectar a Postgres de verdad, el session pooler.** Es IPv4 en todos los planes. El usuario **no es `postgres`** sino `postgres.<ref>`; usar el primero da `password authentication failed` o `tenant or user not found`, y ese malentendido ya nos costó dos diagnósticos equivocados. La cadena se copia del botón *Connect* del panel, pestaña **Session pooler**.
+- **`db:push` apunta al proyecto ENLAZADO, y no dice a cuál.** El destino lo guarda `supabase/.temp/project-ref`, que está fuera de git, así que cada máquina tiene el suyo y no hay nada en el repositorio que lo delate. Antes de aplicar una migración:
+
+  ```bash
+  cat supabase/.temp/project-ref                        # ¿a cuál voy?
+  npx supabase link --project-ref vjttgjjmdsnlurwlcmgb  # la porra REAL
+  ```
+
+  `npx supabase gen types --linked` sale del mismo sitio: generar tipos contra un proyecto de pruebas mete en `database.types.ts` un esquema que producción no tiene.
+- **`npm run db:verify` va SIEMPRE al proyecto de `.env` y `apps/web/.env.local`**, que son los de la porra real — no sigue al que esté enlazado. Y **crea y borra datos, usuarios incluidos**: los limpia al terminar, pero conviene saber que se ejecuta sobre la base buena. (La variante que acepta credenciales por entorno existe, pero vive en la rama `ligas`.)
 - Secretos en `.env` (raíz, para el sync) y `apps/web/.env.local`. Ambos ignorados por git.
 - Los workflows necesitan `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_DB_URL` en *Settings → Secrets → Actions*. La última solo la usa `backup.yml`: el host directo es IPv6 y desde aquí no se alcanza, pero los runners de GitHub sí.
 - **El plan gratuito de Supabase no hace copias de seguridad** (eso es Pro) y **pausa el proyecto tras 7 días de poca actividad**. De ambas cosas se encarga `backup.yml`, semanal. Ver §14.
