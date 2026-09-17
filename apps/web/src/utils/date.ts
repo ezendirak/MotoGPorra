@@ -52,29 +52,26 @@ export function formatTime(iso: string | null): string {
 }
 
 /**
- * Tiempo restante: "3 d 5 h", "5 h 12 min", "12 min 34 s".
+ * Milisegundos que faltan hasta `iso`, o `null` si ya pasó.
  *
- * Devuelve `null` si ya pasó, para que quien lo use decida qué mostrar en vez
- * de recibir un "hace 2 días" que aquí no significa nada.
+ * Devuelve el NÚMERO y no el texto a propósito: lo calcula el SERVIDOR una vez
+ * y el navegador descuenta desde ahí con un reloj monótono (ver
+ * `useCountdown`). Aquí hubo una función que formateaba directamente
+ * comparando con `new Date()`, y al usarla desde el cliente hacía que un móvil
+ * con la hora atrasada anunciara plazo cuando ya no lo había.
  *
- * La granularidad cambia con lo que queda porque cambia lo que le importa al
- * usuario: a tres días vista da igual el minuto exacto, y a doce minutos del
- * cierre lo único que quiere saber es si le da tiempo a apostar.
- *
- * Que por encima de la hora solo cambie cada minuto tiene además una ventaja
- * práctica: la cuenta atrás en vivo guarda el texto ya formateado, así que
- * mientras el texto no cambie React no vuelve a renderizar aunque el reloj siga
- * corriendo.
+ * Por eso `from` no tiene sentido pasarlo desde un componente de cliente: si
+ * acabas necesitándolo ahí, casi seguro que lo que quieres es la cuenta atrás.
  */
-export function timeUntilPrecise(
-  iso: string | null,
-  from: Date = new Date(),
-): string | null {
+export function msHasta(iso: string | null, from: Date = new Date()): number | null {
   if (!iso) return null
 
   const ms = new Date(iso).getTime() - from.getTime()
-  if (ms <= 0) return null
+  return ms > 0 ? ms : null
+}
 
+/** Formatea una duración en milisegundos: `3 d 5 h`, `12 min 34 s`, `45 s`. */
+export function formatDuracion(ms: number): string {
   const segundos = Math.floor(ms / 1000)
   const minutos = Math.floor(segundos / 60)
   const horas = Math.floor(minutos / 60)

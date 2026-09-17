@@ -7,7 +7,7 @@ import { getMyBet } from '@/services/bets.service'
 import { getRaceById } from '@/services/races.service'
 import { getSeasonRiders } from '@/services/riders.service'
 import { RaceCountdown } from '@/components/races/race-countdown'
-import { countryFlag, formatRaceDate, timeUntilPrecise } from '@/utils/date'
+import { countryFlag, formatRaceDate, msHasta } from '@/utils/date'
 
 export const metadata: Metadata = { title: 'Tu apuesta' }
 
@@ -43,7 +43,7 @@ export default async function BetPage({
     getMyBet(raceId),
   ])
 
-  const restante = timeUntilPrecise(race.closes_at)
+  const restante = msHasta(race.closes_at)
 
   return (
     <main className="flex flex-col gap-6 px-5 pt-8">
@@ -74,7 +74,7 @@ export default async function BetPage({
         <p className="text-sm text-amber-300">
           <RaceCountdown
             closesAt={race.closes_at}
-            inicial={restante}
+            restanteMs={restante}
             prefijo="Cierra "
             textoCerrado="El plazo está a punto de cerrarse"
             className="font-semibold tabular-nums"

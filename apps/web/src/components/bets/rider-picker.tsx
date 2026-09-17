@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { RiderAvatar, RiderNumber } from '@/components/riders/rider-avatar'
 import type { SeasonRider } from '@/services/riders.service'
 
+const MEDALLAS = ['🥇', '🥈', '🥉'] as const
+
 /**
  * Selector de piloto en hoja inferior.
  *
@@ -12,23 +14,27 @@ import type { SeasonRider } from '@/services/riders.service'
  * pulgar y el gesto de cerrar (deslizar hacia abajo o tocar fuera) es el que
  * la gente ya espera.
  *
- * Los pilotos ya elegidos en otra posición aparecen deshabilitados en lugar de
- * ocultos: si desaparecieran, la lista cambiaría de longitud entre aperturas y
- * costaría encontrar a nadie.
+ * **Aparecen todos, siempre.** Antes los ya elegidos salían deshabilitados, y
+ * corregirse —poner en 1º a quien habías puesto 3º— obligaba a quitarlo de su
+ * sitio y volver a buscarlo. Ahora elegir a uno que ya ocupa otra posición las
+ * intercambia, y su medalla actual se pinta a la derecha para que se vea venir
+ * antes de tocar nada.
  */
 export function RiderPicker({
   open,
   riders,
-  disabledIds,
-  selectedId,
+  picks,
+  indice,
   onSelect,
   onClose,
   title,
 }: {
   open: boolean
   riders: SeasonRider[]
-  disabledIds: string[]
-  selectedId: string | null
+  /** El podio tal y como está ahora, para saber quién ocupa qué. */
+  picks: (string | null)[]
+  /** Posición que se está eligiendo, o `null` si la hoja está cerrada. */
+  indice: number | null
   onSelect: (riderId: string) => void
   onClose: () => void
   title: string
@@ -95,23 +101,22 @@ export function RiderPicker({
 
         <ul className="flex-1 overflow-y-auto overscroll-contain p-2">
           {filtrados.map((rider) => {
-            const bloqueado = disabledIds.includes(rider.riderId)
-            const elegido = selectedId === rider.riderId
+            const ocupa = picks.indexOf(rider.riderId)
+            const elegido = ocupa === indice && ocupa !== -1
+            // Ocupa OTRA posición: elegirlo aquí las intercambiará.
+            const intercambia = ocupa !== -1 && ocupa !== indice
 
             return (
               <li key={rider.riderId}>
                 <button
                   type="button"
-                  disabled={bloqueado}
                   onClick={() => {
                     onSelect(rider.riderId)
                     onClose()
                   }}
                   className={[
                     'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
-                    bloqueado
-                      ? 'cursor-not-allowed opacity-35'
-                      : 'hover:bg-zinc-900 active:bg-zinc-800',
+                    'hover:bg-zinc-900 active:bg-zinc-800',
                     elegido ? 'bg-red-600/15 ring-1 ring-red-600/50' : '',
                   ].join(' ')}
                 >
@@ -129,8 +134,11 @@ export function RiderPicker({
                       {rider.team ?? 'Sin equipo'}
                     </span>
                   </span>
-                  {bloqueado ? (
-                    <span className="shrink-0 text-[11px] text-zinc-500">Ya elegido</span>
+                  {intercambia ? (
+                    <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-zinc-400">
+                      <span aria-hidden="true">{MEDALLAS[ocupa]}</span>
+                      <span>Intercambiar</span>
+                    </span>
                   ) : (
                     <RiderNumber
                       numberImageUrl={rider.numberImageUrl}

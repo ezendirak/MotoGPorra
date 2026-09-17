@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/ui/submit-button'
 import { placeBet } from '@/lib/bets/actions'
 import type { SeasonRider } from '@/services/riders.service'
 import { idleState } from '@/types/api'
+import { colocarPiloto } from '@/utils/podium'
 
 import { RiderPicker } from './rider-picker'
 
@@ -34,8 +35,19 @@ export function BetForm({
   const porId = new Map(riders.map((r) => [r.riderId, r]))
   const completa = picks.every((p) => p !== null)
 
+  /**
+   * Coloca un piloto en una posición. Si ya estaba en OTRA, las intercambia.
+   *
+   * Antes los ya elegidos salían deshabilitados, y mover a alguien del 3º al 1º
+   * obligaba a quitarlo primero y buscarlo otra vez. El intercambio resuelve
+   * ese caso en un gesto y no deja huecos: reordenar el podio es lo que más se
+   * hace, y es justo lo que peor funcionaba.
+   *
+   * Cuando la posición de destino está vacía, intercambiar equivale a mover y
+   * dejar libre la de origen — que es el otro caso que la gente esperaba.
+   */
   const elegir = (indice: number, riderId: string) => {
-    setPicks((actual) => actual.map((p, i) => (i === indice ? riderId : p)))
+    setPicks((actual) => colocarPiloto(actual, indice, riderId))
   }
 
   return (
@@ -118,10 +130,11 @@ export function BetForm({
         key={abierto ?? 'cerrado'}
         open={abierto !== null}
         riders={riders}
-        // Los ya elegidos en OTRA posición se bloquean: la base rechazaría la
-        // apuesta con DUPLICATE_RIDER, y es mejor impedirlo que explicarlo.
-        disabledIds={picks.filter((p, i): p is string => p !== null && i !== abierto)}
-        selectedId={abierto !== null ? (picks[abierto] ?? null) : null}
+        // La lista entera, siempre. Ya no se bloquea a nadie: elegir a alguien
+        // que ya ocupa otra posición las intercambia, y el selector lo avisa
+        // antes de tocar nada.
+        picks={picks}
+        indice={abierto}
         onSelect={(riderId) => {
           if (abierto !== null) elegir(abierto, riderId)
         }}
